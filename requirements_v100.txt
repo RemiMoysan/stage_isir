@@ -1,0 +1,6 @@
+Cartopy==0.25.0
+cftime==1.6.5
+eofs==2.0.0
+netCDF4==1.7.4
+pyproj==3.7.1
+pyshp==3.0.3

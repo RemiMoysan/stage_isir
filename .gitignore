@@ -1,0 +1,69 @@
+# Data files
+*.nc
+
+# Images
+*.png
+
+# Animations et vidéos
+*.gif
+*.mp4
+
+# Saved matrices
+*.npz
+
+# Job output / logs (Slurm and generic)
+*.err
+*.out
+#*.slurm
+*.o
+*.e
+*.log
+
+# Fichiers fantômes macOS
+._*
+
+# Modèles scikit-learn/joblib
+*.joblib
+
+# Fichiers temporaires de téléchargement
+*.dkbeBc
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+env/
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints
+
+# VSCode
+.vscode/
+
+# macOS
+.DS_Store
+
+# Environnements locaux et bibliothèques
+.local/
+.local_vit_*/
+
+# Modèles Deep Learning (Poids et checkpoints)
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.keras
+
+# Autres formats de données volumineux
+*.csv
+*.parquet
+*.hdf5
+
+# Variables d'environnement et secrets (Mots de passe, tokens API)
+.env
+
