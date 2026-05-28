@@ -144,7 +144,7 @@ def generate_master_reference(member_ids, sst_lags, slp_lags, n_clusters=4, late
                 
                 # Fonction utilitaire pour éviter la répétition et accélérer le code via numpy
                 def process_var(ds, var_name, dates, lag, norm_std, key):
-                    target_dates = [d - timedelta(days=lag) for d in dates] if lag > 0 else dates
+                    target_dates = [d - timedelta(days=lag) for d in dates] 
                     valid = np.intersect1d(target_dates, ds.time.values)
                     if len(valid) > 0:
                         vals = ds[var_name].sel(time=valid).values / norm_std
@@ -231,7 +231,7 @@ def generate_master_reference(member_ids, sst_lags, slp_lags, n_clusters=4, late
     n_cols = 1 + len(slp_lags) + len(sst_lags)
     n_rows = n_clusters + 1 
     
-    my_norm_mean = mcolors.SymLogNorm(linthresh=0.5, vmin=-vmax_plot_mean, vmax=vmax_plot_mean, base=10)
+    my_norm_mean = mcolors.SymLogNorm(linthresh=0.4, vmin=-vmax_plot_mean, vmax=vmax_plot_mean, base=10)
     cbar_ticks_mean = [-2, -1, -0.4, 0, 0.4, 1, 2]
     
     # FIGURE MOYENNES
@@ -370,18 +370,18 @@ if __name__ == "__main__":
 
     # parameters
     number_of_members = args.number_of_members
-    sst_lags = [35, 65, 95, 140, 175, 210, 245, 280, 315, 350] 
+    sst_lags = [-35, -15,-7,0,35, 65, 95, 140, 175, 210, 245, 280, 315, 350] 
     slp_lags = [15, 30, 45, 60]      
     duree_lissage = args.duree_lissage
 
     if args.machine == 'hacienda':
-        base_home = f"/home/moysan/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_{number_of_members}members_normalize{args.normalize}_duree_lissage{duree_lissage}_embedding_method_{args.embedding_method}_latent_dim_{args.latent_dim}/"
+        base_home = f"/home/moysan/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_{number_of_members}members_normalize{args.normalize}_duree_lissage{duree_lissage}_embedding_method_{args.embedding_method}_latent_dim_{args.latent_dim}_future/"
         data_dir = "/data/moysan/data/"
     elif args.machine == 'jean-zay-work': 
-        base_home = f"/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_{number_of_members}members_normalize{args.normalize}_duree_lissage{duree_lissage}_embedding_method_{args.embedding_method}_latent_dim_{args.latent_dim}/"
+        base_home = f"/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_{number_of_members}members_normalize{args.normalize}_duree_lissage{duree_lissage}_embedding_method_{args.embedding_method}_latent_dim_{args.latent_dim}_future/"
         data_dir = "/lustre/fswork/projects/rech/uxg/uca57ub/data/"
     elif args.machine == 'jean-zay-scratch':
-        base_home = f"/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_{number_of_members}members_normalize{args.normalize}_duree_lissage{duree_lissage}_embedding_method_{args.embedding_method}_latent_dim_{args.latent_dim}/"
+        base_home = f"/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_{number_of_members}members_normalize{args.normalize}_duree_lissage{duree_lissage}_embedding_method_{args.embedding_method}_latent_dim_{args.latent_dim}_future/"
         data_dir = "/lustre/fsn1/projects/rech/uxg/uca57ub/data/"
 
     os.makedirs(base_home, exist_ok=True)

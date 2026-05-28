@@ -1,15 +1,16 @@
 #!/bin/bash
-#SBATCH --job-name=CNNclassVAE      # Nom du job
-#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_classifier/log/cnn_output_%j.out   # Fichier de sortie standard (%j = ID du job)
-#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_classifier/log/cnn_error_%j.err     # Fichier d'erreur
+#SBATCH --job-name=ShapCNNclass      # Nom du job
+#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_classifier/log/shapcnn_output_%j.out   # Fichier de sortie standard (%j = ID du job)
+#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_classifier/log/shapcnn_error_%j.err     # Fichier d'erreur
 #SBATCH --partition=gpu_p2l           # <-- NOUVEAU : Partition avec les V100 32 Go
-#SBATCH --time=20:00:00              # Temps alloué
+#SBATCH --time=01:00:00              # Temps alloué
 #SBATCH --nodes=1                    # 1 seul noeud
 #SBATCH --ntasks=1                   # 1 seule tâche PyTorch
 #SBATCH --gres=gpu:1                 # 1 seul GPU V100 (32 Go)
 #SBATCH --cpus-per-task=3            # <-- CRUCIAL : Le maximum autorisé par GPU sur gpu_p2 !
 #SBATCH --hint=nomultithread         # Désactive l'hyperthreading
 #SBATCH --account=uxg@v100           # Ton projet
+#SBATCH --qos=qos_gpu-dev            # Qualité de service pour les GPUs
 
 # 1. Nettoyage de l'environnement
 module purge
@@ -47,25 +48,19 @@ PID_CPU=$!
 
 
 # 4. Lancement de ton script Python
-srun python main.py \
-    --update 0 \
+srun python compute_shap_cnn.py \
     --machine jean-zay-work \
-    --seed 1 \
-    --nb_members_train 50 \
-    --nb_members_val 5 \
-    --sst_lags_days "-7" 35 65 95 \
+    --model_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_classifier/CNN_classifier_lags_-7_35_65_95_sst__slp_bs128_lr1e-05_dr0.4_months_1_2_train50_val_5_members_seed_1_30d_metric_mse/final_model_CNN_bs128.pth" \
+    --sst_lags_days -7 35 65 95 \
     --slp_lags_days \
     --winter_months 1 2 \
-    --bs 128 \
-    --lr 1e-5 \
-    --dr 0.4 \
-    --nb_epochs 15 \
     --duree_lissage 30 \
-    --metric mse \
-    --master_ref_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_89members_normalizeFalse_duree_lissage30_embedding_method_pca_latent_dim_128/master_reference_global.npz"
+    --num_classes 4 \
+    --n_background 100 \
+    --n_test 300
 
 
 # 5. NETTOYAGE INDISPENSABLE
 # On tue les boucles de monitoring pour que le job SLURM puisse se terminer proprement
 kill $PID_GPU $PID_CPU
-echo "Entraînement et monitoring terminés."
+echo "Calcul des SHAP values et monitoring terminés."

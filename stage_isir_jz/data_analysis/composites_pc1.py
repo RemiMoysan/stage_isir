@@ -116,7 +116,7 @@ def generate_master_reference(member_ids, sst_lags, slp_lags, n_quantiles=4):
                 
                 # Fonction utilitaire pour éviter la répétition
                 def process_var(ds, var_name, dates, lag, norm_std, key):
-                    target_dates = [d - timedelta(days=lag) for d in dates] if lag > 0 else dates
+                    target_dates = [d - timedelta(days=lag) for d in dates] 
                     valid = np.intersect1d(target_dates, ds.time.values)
                     if len(valid) > 0:
                         vals = ds[var_name].sel(time=valid).values / norm_std
@@ -341,19 +341,19 @@ if __name__ == "__main__":
 
     # parameters
     number_of_members = args.number_of_members
-    sst_lags = [35, 65, 95, 140, 175, 210, 245, 280, 315, 350] 
+    sst_lags = [-35, -15,-7,0,35, 65, 95, 140, 175, 210, 245, 280, 315, 350] 
     slp_lags = [15, 30, 45, 60]      
     duree_lissage = args.duree_lissage
 
     # Dossiers adaptés en enlevant l'argument 'embedding_method' devenu obsolète
     if args.machine == 'hacienda':
-        base_home = f"/home/moysan/stage_isir_jz/data_analysis/composites_pc1_quantiles/pc1_{args.n_quantiles}_quantiles_master_ref_generator_{number_of_members}members_normalize{args.normalize}_duree_lissage{duree_lissage}/"
+        base_home = f"/home/moysan/stage_isir_jz/data_analysis/composites_pc1_quantiles/pc1_{args.n_quantiles}_quantiles_master_ref_generator_{number_of_members}members_normalize{args.normalize}_duree_lissage{duree_lissage}_future/"
         data_dir = "/data/moysan/data/"
     elif args.machine == 'jean-zay-work': 
-        base_home = f"/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_pc1_quantiles/pc1_{args.n_quantiles}_quantiles_master_ref_generator_{number_of_members}members_normalize{args.normalize}_duree_lissage{duree_lissage}/"
+        base_home = f"/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_pc1_quantiles/pc1_{args.n_quantiles}_quantiles_master_ref_generator_{number_of_members}members_normalize{args.normalize}_duree_lissage{duree_lissage}_future/"
         data_dir = "/lustre/fswork/projects/rech/uxg/uca57ub/data/"
     elif args.machine == 'jean-zay-scratch':
-        base_home = f"/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_pc1_quantiles/pc1_{args.n_quantiles}_quantiles_master_ref_generator_{number_of_members}members_normalize{args.normalize}_duree_lissage{duree_lissage}/"
+        base_home = f"/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_pc1_quantiles/pc1_{args.n_quantiles}_quantiles_master_ref_generator_{number_of_members}members_normalize{args.normalize}_duree_lissage{duree_lissage}_future/"
         data_dir = "/lustre/fsn1/projects/rech/uxg/uca57ub/data/"
 
     os.makedirs(base_home, exist_ok=True)

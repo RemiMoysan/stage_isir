@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=weather_regimes       # Nom du job
+#SBATCH --job-name=4meanspred       # Nom du job
 #SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/clusters_prediction_%j.out          # Fichier de sortie standard (%j = numéro du job)
 #SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/clusters_prediction_%j.out           # Fichier d'erreur (fusionné avec la sortie)
 #SBATCH -A uxg@cpu                     # Allocation du projet (uxg) sur les heures CPU
 #SBATCH --partition=prepost
-#SBATCH --time=00:30:00                  # Temps d'exécution 
+#SBATCH --time=10:30:00                  # Temps d'exécution 
 #SBATCH --nodes=1                        # Un seul nœud de calcul
 #SBATCH --ntasks=1                       # Une seule tâche
 #SBATCH --cpus-per-task=10               # 10 cœurs pour accélérer Numpy/Scikit-learn
@@ -25,4 +25,9 @@ export PYTHONUSERBASE=$WORK/.local_vit_v100
 cd $WORK/stage_isir_jz/data_analysis/
 
 # 5. Exécution du code
-srun python predictions_from_clusters.py --machine jean-zay-work
+srun python predictions_from_clusters_jz.py \
+    --machine jean-zay-work \
+    --target_lag "95" \
+    --relative_path stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_89members_normalizeFalse_duree_lissage30_embedding_method_pca_latent_dim_128_future/ \
+    --duree_lissage 30 \
+    --number_of_members 1

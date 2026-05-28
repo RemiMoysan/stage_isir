@@ -157,8 +157,12 @@ def loss_first_epoch(batch_losses, baseline_losses, outdir):
     plt.plot(batch_losses, label='Train Loss (ViT)', color='blue')
     
     # Courbe de la baseline évaluée sur les mêmes batchs
-    plt.plot(baseline_losses, label='Baseline (Pred = 0)', color='red', linestyle='--', alpha=0.8)
+    plt.plot(baseline_losses, label='Baseline (Pred = 0)', color='red', linestyle='--', alpha=0.5)
     
+    # NOUVEAU : Ligne horizontale pour la moyenne globale de la baseline
+    mean_baseline = np.mean(baseline_losses)
+    plt.axhline(y=mean_baseline, color='red', linestyle='--', linewidth=1.5,label=f'Baseline Moyenne : {mean_baseline:.4f}')
+
     plt.xlabel('Batch Index')
     plt.ylabel('MSE Loss')
     plt.title('Train Loss vs Baseline per Batch - Epoch 1')
@@ -180,7 +184,12 @@ def loss_acc_first_epoch(batch_losses, baseline_losses, batch_accs, baseline_acc
     
     # --- Plot de la Loss ---
     ax1.plot(batch_losses, label='Train Loss (ViT)', color='blue')
-    ax1.plot(baseline_losses, label='Baseline Loss (Priors)', color='red', linestyle='--', alpha=0.8)
+    ax1.plot(baseline_losses, label='Baseline Loss (Priors)', color='red', linestyle='--', alpha=0.5)
+
+    # NOUVEAU : Ligne horizontale pour la moyenne de la Baseline Loss
+    mean_b_loss = np.mean(baseline_losses)
+    ax1.axhline(y=mean_b_loss, color='red', linestyle='--', linewidth=1.5,label=f'Baseline Loss Moy : {mean_b_loss:.4f}')
+
     ax1.set_xlabel('Batch Index')
     ax1.set_ylabel('CrossEntropy Loss')
     ax1.set_title('Train Loss vs Baseline - Epoch 1')
@@ -189,7 +198,11 @@ def loss_acc_first_epoch(batch_losses, baseline_losses, batch_accs, baseline_acc
     
     # --- Plot de l'Accuracy ---
     ax2.plot(batch_accs, label='Train Accuracy (ViT)', color='green')
-    ax2.plot(baseline_accs, label='Baseline Acc (Majority Class)', color='orange', linestyle='--', alpha=0.8)
+    ax2.plot(baseline_accs, label='Baseline Acc (Majority Class)', color='orange', linestyle='--', alpha=0.5)
+
+    # NOUVEAU : Ligne horizontale pour la moyenne de la Baseline Accuracy
+    mean_b_acc = np.mean(baseline_accs)
+    ax2.axhline(y=mean_b_acc, color='orange', linestyle='--', linewidth=1.5,label=f'Baseline Acc Moy : {mean_b_acc:.2f}%')
     ax2.set_xlabel('Batch Index')
     ax2.set_ylabel('Accuracy (%)')
     ax2.set_title('Train Accuracy vs Baseline - Epoch 1')

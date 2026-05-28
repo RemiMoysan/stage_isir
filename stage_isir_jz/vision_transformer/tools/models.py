@@ -482,18 +482,30 @@ class ViT_Latent_SLP_Multimodal(nn.Module):
     def __init__(self, 
                  sst_size=(85, 360), patch_size_sst=(5, 10), in_chans_sst=3,
                  slp_size=(53, 113), patch_size_slp=(5, 5), in_chans_slp=2,  # <-- Tu peux changer les lags ici
-                 nb_out=10, embed_dim=128, depth=4, num_heads=4, dr=0.1):
+                 nb_out=10, embed_dim=128, depth=4, num_heads=4, dr=0.1, use_lags_attention=False):
         super().__init__()
         
         self.use_sst_in = in_chans_sst > 0
         self.use_slp_in = in_chans_slp > 0
-        # 1. Création des DEUX extracteurs de patches
+        self.use_lags_attention = use_lags_attention
+
+        # 1. Création des extracteurs de patches
         if self.use_sst_in:
-            self.sst_embed = PatchEmbedding(sst_size, patch_size_sst, in_chans_sst, embed_dim)
+            # Si lags_attention=True, on traite frame par frame (1 channel). Sinon Early Fusion.
+            c_in_sst = 1 if use_lags_attention else in_chans_sst
+            self.sst_embed = PatchEmbedding(sst_size, patch_size_sst, c_in_sst, embed_dim)
             self.sst_pos_embed = nn.Parameter(torch.zeros(1, self.sst_embed.num_patches, embed_dim))
+            
+            if use_lags_attention:
+                self.sst_time_embed = nn.Parameter(torch.zeros(1, in_chans_sst, 1, embed_dim))
+                
         if self.use_slp_in:
-            self.slp_in_embed = PatchEmbedding(slp_size, patch_size_slp, in_chans_slp, embed_dim)
+            c_in_slp = 1 if use_lags_attention else in_chans_slp
+            self.slp_in_embed = PatchEmbedding(slp_size, patch_size_slp, c_in_slp, embed_dim)
             self.slp_in_pos_embed = nn.Parameter(torch.zeros(1, self.slp_in_embed.num_patches, embed_dim))
+            
+            if use_lags_attention:
+                self.slp_time_embed = nn.Parameter(torch.zeros(1, in_chans_slp, 1, embed_dim))
 
         if not self.use_sst_in and not self.use_slp_in:
             raise ValueError("Le modèle doit recevoir au moins une source de données (SST ou SLP).")
@@ -524,8 +536,12 @@ class ViT_Latent_SLP_Multimodal(nn.Module):
         # Init
         if self.use_sst_in:
             nn.init.trunc_normal_(self.sst_pos_embed, std=0.02)
+            if use_lags_attention:
+                nn.init.trunc_normal_(self.sst_time_embed, std=0.02)
         if self.use_slp_in:
             nn.init.trunc_normal_(self.slp_in_pos_embed, std=0.02)
+            if use_lags_attention:
+                nn.init.trunc_normal_(self.slp_time_embed, std=0.02)
         nn.init.trunc_normal_(self.cls_token, std=0.02)
         self.apply(self._init_weights)
 
@@ -544,16 +560,38 @@ class ViT_Latent_SLP_Multimodal(nn.Module):
         """
         B = x_sst.shape[0] if self.use_sst_in else x_slp.shape[0]
         
-        # 2. FUSION (Early Fusion) : on colle les patchs SLP à la suite des patchs SST
+        # --- ROUTE A : ATTENTION SPATIO-TEMPORELLE (ViViT) ---
+        if self.use_lags_attention:
+            if self.use_sst_in:
+                _, T_sst, H_sst, W_sst = x_sst.shape
+                x_sst_re = x_sst.reshape(B * T_sst, 1, H_sst, W_sst)
+                tokens_sst = self.sst_embed(x_sst_re) 
+                tokens_sst = tokens_sst.reshape(B, T_sst, -1, tokens_sst.shape[-1])
+                # On ajoute pos_embed (spatial) et time_embed (temporel)
+                tokens_sst = tokens_sst + self.sst_pos_embed.unsqueeze(1) + self.sst_time_embed
+                tokens_sst = tokens_sst.reshape(B, -1, tokens_sst.shape[-1])
+
+            if self.use_slp_in:
+                _, T_slp, H_slp, W_slp = x_slp.shape
+                x_slp_re = x_slp.reshape(B * T_slp, 1, H_slp, W_slp)
+                tokens_slp = self.slp_in_embed(x_slp_re)
+                tokens_slp = tokens_slp.reshape(B, T_slp, -1, tokens_slp.shape[-1])
+                tokens_slp = tokens_slp + self.slp_in_pos_embed.unsqueeze(1) + self.slp_time_embed
+                tokens_slp = tokens_slp.reshape(B, -1, tokens_slp.shape[-1])
+                
+        # --- ROUTE B : ARCHITECTURE CLASSIQUE (EARLY FUSION) ---
+        else:
+            if self.use_sst_in:
+                tokens_sst = self.sst_embed(x_sst) + self.sst_pos_embed
+            if self.use_slp_in:
+                tokens_slp = self.slp_in_embed(x_slp) + self.slp_in_pos_embed
+
+        # --- FUSION FINALE DES MODALITÉS (Commun aux deux routes) ---
         if self.use_sst_in and self.use_slp_in:
-            tokens_sst = self.sst_embed(x_sst) + self.sst_pos_embed # -> (B, num_patches_sst, embed_dim)
-            tokens_slp = self.slp_in_embed(x_slp) + self.slp_in_pos_embed # -> (B, num_patches_slp, embed_dim)
-            tokens = torch.cat((tokens_sst, tokens_slp), dim=1) # -> (B, num_patches_total, embed_dim)
+            tokens = torch.cat((tokens_sst, tokens_slp), dim=1)
         elif self.use_sst_in:
-            tokens_sst = self.sst_embed(x_sst) + self.sst_pos_embed
             tokens = tokens_sst
         elif self.use_slp_in:
-            tokens_slp = self.slp_in_embed(x_slp) + self.slp_in_pos_embed
             tokens = tokens_slp
         # 3. Ajout du token de classification
         cls_tokens = self.cls_token.expand(B, -1, -1)
@@ -578,18 +616,26 @@ class ViT_Classifier_Multimodal(nn.Module):
     def __init__(self, 
                  sst_size=(85, 360), patch_size_sst=(5, 10), in_chans_sst=3,
                  slp_size=(53, 113), patch_size_slp=(5, 10), in_chans_slp=1,
-                 num_classes=4, embed_dim=128, depth=4, num_heads=4, dr=0.1): # <-- nb_out devient num_classes
+                 num_classes=4, embed_dim=128, depth=4, num_heads=4, dr=0.1,use_lags_attention=False): # <-- nb_out devient num_classes
         super().__init__()
         
         self.use_sst_in = in_chans_sst > 0
         self.use_slp_in = in_chans_slp > 0
+        self.use_lags_attention = use_lags_attention
         
         if self.use_sst_in:
-            self.sst_embed = PatchEmbedding(sst_size, patch_size_sst, in_chans_sst, embed_dim)
+            c_in_sst = 1 if use_lags_attention else in_chans_sst
+            self.sst_embed = PatchEmbedding(sst_size, patch_size_sst, c_in_sst, embed_dim)
             self.sst_pos_embed = nn.Parameter(torch.zeros(1, self.sst_embed.num_patches, embed_dim))
+            if use_lags_attention:
+                self.sst_time_embed = nn.Parameter(torch.zeros(1, in_chans_sst, 1, embed_dim))
+            
         if self.use_slp_in:
-            self.slp_in_embed = PatchEmbedding(slp_size, patch_size_slp, in_chans_slp, embed_dim)
+            c_in_slp = 1 if use_lags_attention else in_chans_slp
+            self.slp_in_embed = PatchEmbedding(slp_size, patch_size_slp, c_in_slp, embed_dim)
             self.slp_in_pos_embed = nn.Parameter(torch.zeros(1, self.slp_in_embed.num_patches, embed_dim))
+            if use_lags_attention:
+                self.slp_time_embed = nn.Parameter(torch.zeros(1, in_chans_slp, 1, embed_dim))
 
         if not self.use_sst_in and not self.use_slp_in:
             raise ValueError("Le modèle doit recevoir au moins une source de données.")
@@ -611,8 +657,12 @@ class ViT_Classifier_Multimodal(nn.Module):
         # Init
         if self.use_sst_in:
             nn.init.trunc_normal_(self.sst_pos_embed, std=0.02)
+            if use_lags_attention:
+                nn.init.trunc_normal_(self.sst_time_embed, std=0.02)
         if self.use_slp_in:
             nn.init.trunc_normal_(self.slp_in_pos_embed, std=0.02)
+            if use_lags_attention:
+                nn.init.trunc_normal_(self.slp_time_embed, std=0.02)
         nn.init.trunc_normal_(self.cls_token, std=0.02)
         self.apply(self._init_weights)
 
@@ -628,14 +678,34 @@ class ViT_Classifier_Multimodal(nn.Module):
     def forward(self, x_sst, x_slp):
         B = x_sst.shape[0] if self.use_sst_in else x_slp.shape[0]
         
+        if self.use_lags_attention:
+            if self.use_sst_in:
+                _, T_sst, H_sst, W_sst = x_sst.shape
+                x_sst_re = x_sst.reshape(B * T_sst, 1, H_sst, W_sst)
+                tokens_sst = self.sst_embed(x_sst_re) 
+                tokens_sst = tokens_sst.reshape(B, T_sst, -1, tokens_sst.shape[-1])
+                tokens_sst = tokens_sst + self.sst_pos_embed.unsqueeze(1) + self.sst_time_embed
+                tokens_sst = tokens_sst.reshape(B, -1, tokens_sst.shape[-1])
+
+            if self.use_slp_in:
+                _, T_slp, H_slp, W_slp = x_slp.shape
+                x_slp_re = x_slp.reshape(B * T_slp, 1, H_slp, W_slp)
+                tokens_slp = self.slp_in_embed(x_slp_re)
+                tokens_slp = tokens_slp.reshape(B, T_slp, -1, tokens_slp.shape[-1])
+                tokens_slp = tokens_slp + self.slp_in_pos_embed.unsqueeze(1) + self.slp_time_embed
+                tokens_slp = tokens_slp.reshape(B, -1, tokens_slp.shape[-1])
+        else:
+            if self.use_sst_in:
+                tokens_sst = self.sst_embed(x_sst) + self.sst_pos_embed
+            if self.use_slp_in:
+                tokens_slp = self.slp_in_embed(x_slp) + self.slp_in_pos_embed
+
         if self.use_sst_in and self.use_slp_in:
-            tokens_sst = self.sst_embed(x_sst) + self.sst_pos_embed 
-            tokens_slp = self.slp_in_embed(x_slp) + self.slp_in_pos_embed 
-            tokens = torch.cat((tokens_sst, tokens_slp), dim=1) 
+            tokens = torch.cat((tokens_sst, tokens_slp), dim=1)
         elif self.use_sst_in:
-            tokens = self.sst_embed(x_sst) + self.sst_pos_embed
+            tokens = tokens_sst
         elif self.use_slp_in:
-            tokens = self.slp_in_embed(x_slp) + self.slp_in_pos_embed
+            tokens = tokens_slp
             
         cls_tokens = self.cls_token.expand(B, -1, -1)
         x = torch.cat((cls_tokens, tokens), dim=1) 

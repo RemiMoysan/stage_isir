@@ -59,9 +59,10 @@ srun python main.py \
     --bs 128 \
     --lr 5e-5 \
     --dr 0.2 \
-    --nb_epochs 2 \
+    --nb_epochs 4 \
     --duree_lissage 30 \
     --metric mse \
+    --use_lags_attention \
     --master_ref_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_89members_normalizeFalse_duree_lissage30_embedding_method_pca_latent_dim_128/master_reference_global.npz"
 
 

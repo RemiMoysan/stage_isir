@@ -129,7 +129,7 @@ def explore_latent_space(model_path, dataloader, outdir, latent_dim=1, z_idx=0, 
     cbar_ax = fig_grid.add_axes([0.92, 0.15, 0.01, 0.7])
     fig_grid.colorbar(im, cax=cbar_ax)
 
-    grid_path = os.path.join(outdir, f"traversal_grid_z{z_idx}.png")
+    grid_path = os.path.join(outdir, f"traversal_grid_z{z_idx}_{sampling_type}.png")
     plt.savefig(grid_path, bbox_inches='tight', dpi=150)
     plt.close(fig_grid)
     print(f"--> Grille de traversée sauvegardée : {grid_path}")
@@ -173,7 +173,7 @@ def explore_latent_space(model_path, dataloader, outdir, latent_dim=1, z_idx=0, 
 
     ani = animation.FuncAnimation(fig_anim, update_frame, frames=z_frames, blit=False)
     
-    gif_path = os.path.join(outdir, f"traversal_anim_z{z_idx}.gif")
+    gif_path = os.path.join(outdir, f"traversal_anim_z{z_idx}_{sampling_type}.gif")
     # --- MODIFICATION ICI : fps=4 pour ralentir l'animation ---
     ani.save(gif_path, writer='pillow', fps=4) 
     plt.close(fig_anim)

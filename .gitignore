@@ -67,3 +67,5 @@ venv/
 # Variables d'environnement et secrets (Mots de passe, tokens API)
 .env
 
+# Des sorties de modèles
+*model.txt 

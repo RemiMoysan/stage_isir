@@ -63,6 +63,7 @@ if __name__ == "__main__":
     parser.add_argument('--metric', type=str, default='mse', choices=['mse', 'correlation','pc1_quantiles','mse_latent'], help='Métrique pour le calcul des labels : mse, correlation marchent sur les pixels donc sans projector, pc1_quantiles et mse_latent marchent sur les embeddings donc avec projector.')    
     parser.add_argument('--master_ref_path', type=str, default="/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_89_members_10d_embedding_method_pca/master_reference_global.npz", help='Chemin vers la référence maître pour le calcul des labels (fichier .npz). Contient les cartes de références mais aussi les embeddings de références (à condition de charger le bon projector)')
     parser.add_argument('--projector_path', type=str, default="/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent128_NDJF_87members_normalizeFalse_duree_lissage10/best_pca_model.joblib", help='Chemin vers le projector à utiliser pour calculer les embeddings de référence, vae ou pca')
+    parser.add_argument('--use_lags_attention', action='store_true', help='Activer l\'attention temporelle entre les lags')
 
     args = parser.parse_args()
 
@@ -119,7 +120,7 @@ if __name__ == "__main__":
     train_members = all_members[:nb_members_train]
     val_members = all_members[-nb_members_val:]
 
-    outdir_name = f"ViT_classifier_lags_{'_'.join(map(str, sst_lags_days))}_sst_{'_'.join(map(str, slp_lags_days))}_slp_bs{bs}_lr{lr}_dr{dr}_months_{'_'.join(map(str, winter_months))}_train{nb_members_train}_val_{nb_members_val}_members_seed_{args.seed}_{duree_lissage}d_metric_{metric}"
+    outdir_name = f"ViT_classifier_lags_attention_{args.use_lags_attention}_lags_{'_'.join(map(str, sst_lags_days))}_sst_{'_'.join(map(str, slp_lags_days))}_slp_bs{bs}_lr{lr}_dr{dr}_months_{'_'.join(map(str, winter_months))}_train{nb_members_train}_val_{nb_members_val}_members_seed_{args.seed}_{duree_lissage}d_metric_{metric}"
     outdir = os.path.join(base_home, outdir_name)
     os.makedirs(outdir, exist_ok=True)
     print(f"Dossier de sauvegarde : {outdir}")
@@ -184,7 +185,8 @@ if __name__ == "__main__":
         embed_dim=128,         # la même pour la slp et pour la sst
         depth=4,                    
         num_heads=4,           
-        dr=dr                  
+        dr=dr,
+        use_lags_attention=args.use_lags_attention                  
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)

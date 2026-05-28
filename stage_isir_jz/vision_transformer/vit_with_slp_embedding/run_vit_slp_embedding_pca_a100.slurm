@@ -2,7 +2,7 @@
 #SBATCH --job-name=ViTPcaEmb      # Nom du job
 #SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/vision_transformer/vit_with_slp_embedding/log/vit_output_%j.out   # Fichier de sortie standard (%j = ID du job)
 #SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/vision_transformer/vit_with_slp_embedding/log/vit_error_%j.err     # Fichier d'erreur
-#SBATCH --time=15:00:00              # Temps alloué
+#SBATCH --time=20:00:00              # Temps alloué
 #SBATCH --nodes=1                    # 1 seul noeud
 #SBATCH --ntasks=1                   # 1 seule tâche PyTorch
 #SBATCH --gres=gpu:1                 # 1 seul GPU A100 : 80 Go
@@ -53,20 +53,21 @@ srun python main.py \
     --update 0 \
     --machine jean-zay-work \
     --embed_method pca \
-    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent1_NDJF_87members_normalizeTrue_duree_lissage30/best_pca_model.joblib" \
-    --seed 42 \
+    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent1_NDJF_87members_normalizeTrue_duree_lissage10/best_pca_model.joblib" \
+    --seed 1 \
     --nb_members_train 50 \
-    --nb_members_val 5 \
+    --nb_members_val 3 \
     --latent_dim 1 \
     --sst_lags_days 35 65 95 \
     --slp_lags_days \
     --winter_months 1 2 \
-    --bs 128 \
-    --lr 5e-5 \
+    --bs 32 \
+    --lr 1e-5 \
     --dr 0.5 \
-    --nb_epochs 2 \
-    --duree_lissage 30 \
-    --normalize
+    --nb_epochs 25 \
+    --duree_lissage 10 \
+    --normalize \
+    --use_lags_attention 
 
 
 # 5. NETTOYAGE INDISPENSABLE

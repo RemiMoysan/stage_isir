@@ -29,7 +29,7 @@ srun python latent_space_exploration.py \
     --machine jean-zay-work \
     --number_of_members 50 \
     --z_idx 0 \
-    --model_name "ConvVAE_bs128_lr0.0001_NDJF_beta500.0_80members_latent1_duree10d" \
-    --duree_lissage 10 \
+    --model_name "ConvVAE_bs128_lr0.0001_NDJF_beta500.0_80members_latent1_duree30d" \
+    --duree_lissage 30 \
     --latent_dim 1 \
     --sampling_type gaussian

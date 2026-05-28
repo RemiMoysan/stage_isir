@@ -12,6 +12,7 @@ from collections import defaultdict
 import joblib
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import scipy.ndimage as ndimage
 
 import sys
 
@@ -47,6 +48,7 @@ if __name__ == "__main__":
     parser.add_argument('--master_ref_path', type=str, default="/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_89_members_10d_embedding_method_pca/master_reference_global.npz", help='Chemin vers la référence maître')
     parser.add_argument('--projector_path', type=str, default="", help='Chemin vers le projector à utiliser (optionnel)')
 
+    parser.add_argument('--smooth_sigma', type=float, default=0.0, help='Intensité du lissage Gaussien de l\'explicabilité (0.0 = brut, 1.5 = recommandé si lissage)')
     args = parser.parse_args()
 
     # --- ROUTAGE DES DOSSIERS ---
@@ -69,6 +71,7 @@ if __name__ == "__main__":
     nb_members_train = args.nb_members_train
     nb_members_val = args.nb_members_val
     metric = args.metric
+    smooth_sigma = args.smooth_sigma
 
     print("Arg Parameters:")
     print(f"  Metric: {metric}", f" SST Lags: {sst_lags_days}", f" SLP Lags: {slp_lags_days}", f" Batch Size (Chunking): {bs}", f" LR: {lr}", f" Months: {winter_months}", f" Smoothing: {duree_lissage}", f" Train Members: {nb_members_train}", f" Val Members: {nb_members_val}\n")
@@ -117,10 +120,10 @@ if __name__ == "__main__":
     print(f"Using {n_workers} workers for data loading")
 
     # shuffle=True pour l'apprentissage incrémental de lgbm
-    training_set = Dataset(members=train_members, selected_months=winter_months, machine=args.machine, target_type='map', sst_lags_days=sst_lags_days, slp_lags_days=slp_lags_days, duree_lissage=duree_lissage)
+    training_set = Dataset(members=train_members, selected_months=winter_months, machine=args.machine, target_type='map', sst_lags_days=sst_lags_days, slp_lags_days=slp_lags_days, duree_lissage=duree_lissage,roll_sst=True)
     trainloader = torch.utils.data.DataLoader(training_set, batch_size=bs, shuffle=True, num_workers=n_workers)
 
-    val_set = Dataset(members=val_members, selected_months=winter_months, machine=args.machine, target_type='map', sst_lags_days=sst_lags_days, slp_lags_days=slp_lags_days, duree_lissage=duree_lissage)
+    val_set = Dataset(members=val_members, selected_months=winter_months, machine=args.machine, target_type='map', sst_lags_days=sst_lags_days, slp_lags_days=slp_lags_days, duree_lissage=duree_lissage,roll_sst=True)
     valloader = torch.utils.data.DataLoader(val_set, batch_size=bs, shuffle=False, num_workers=n_workers)
 
     # --- 1. ENTRAÎNEMENT LAZY LOADING ---
@@ -236,72 +239,97 @@ if __name__ == "__main__":
 
         booster.save_model(os.path.join(outdir, 'lightgbm_lazy_model.txt'))
         
-        # --- EXPLICABILITÉ (Importance de TOUS les pixels sur une échelle partagée) ---
+        # --- EXPLICABILITÉ (Dynamique : Lissage ou Brut) ---
         print("\n--- Génération des cartes d'explicabilité avec Coastlines ---")
+
+        
         explain_dir = os.path.join(outdir, "explicabilite")
         os.makedirs(explain_dir, exist_ok=True)
 
         importances = booster.feature_importance(importance_type='gain')
-        global_max_importance = np.max(importances) if len(importances) > 0 else 1.0
 
         n_sst_features = len(sst_lags_days) * 85 * 360
         n_slp_features = len(slp_lags_days) * 53 * 113
         
-        # /!\ ATTENTION : Remplace ces valeurs par les vraies limites (Lat/Lon) de tes grilles /!\
-        extent_sst = [0, 360, -15, 70]
-        
-        # Exemple : Si ta grille SLP est régionale (ex: Atlantique Nord) :
+        extent_sst = [-180, 180, -15, 70] 
         extent_slp = [-100, 40, 20, 70] 
 
         # --- CARTES SST ---
         if n_sst_features > 0:
             sst_importances = importances[:n_sst_features].reshape(len(sst_lags_days), 85, 360)
+            
+            # Bascule lissage / brut
+            if smooth_sigma > 0.0:
+                print(f"-> Application d'un lissage Gaussien (sigma={smooth_sigma}) sur la SST")
+                sst_plot_data = [ndimage.gaussian_filter(sst_importances[i], sigma=smooth_sigma) for i in range(len(sst_lags_days))]
+                title_suffix = f"(Lissé sigma={smooth_sigma})"
+                file_suffix = f"_smoothed_{smooth_sigma}"
+            else:
+                print("-> Génération des cartes SST brutes (sans lissage)")
+                sst_plot_data = sst_importances
+                title_suffix = "(Brut)"
+                file_suffix = "_raw"
+
+            global_max_sst = np.max(sst_plot_data) if len(sst_plot_data) > 0 else 1.0
+
             for i, lag in enumerate(sst_lags_days):
-                # On déclare une projection géographique (PlateCarree = standard Lat/Lon)
                 fig, ax = plt.subplots(figsize=(10, 4), subplot_kw={'projection': ccrs.PlateCarree()})
                 
-                # Côtes et frontières en BLANC ou GRIS CLAIR
-                ax.coastlines(resolution='110m', color='white', linewidth=1)
-                ax.add_feature(cfeature.BORDERS, edgecolor='white', linestyle=':', alpha=0.5)
+                ax.coastlines(resolution='110m', color='black', linewidth=1)
+                ax.add_feature(cfeature.BORDERS, edgecolor='black', linestyle=':', alpha=0.5)
                 
-                # Tracé de l'image (attention à bien spécifier le transform et l'extent)
-                im = ax.imshow(sst_importances[i], cmap='hot', origin='lower', 
-                               vmin=0, vmax=global_max_importance, 
-                               extent=extent_sst, transform=ccrs.PlateCarree())
+                im = ax.imshow(sst_plot_data[i], cmap='Reds', origin='lower', 
+                               vmin=0, vmax=global_max_sst, 
+                               extent=extent_sst, transform=ccrs.PlateCarree(),
+                               interpolation='nearest')
                 
-                # Quadrillage Lat/Lon (Optionnel mais joli)
                 gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False, alpha=0.3, linestyle='--')
                 gl.top_labels = False
                 gl.right_labels = False
 
                 plt.colorbar(im, ax=ax, label="Importance (Gain LGBM)", orientation='vertical', pad=0.02)
-                ax.set_title(f"Pixels déterminants - SST Lag {lag} jours")
+                ax.set_title(f"Zones déterminantes - SST Lag {lag} jours {title_suffix}")
                 
-                plt.savefig(os.path.join(explain_dir, f"importance_sst_lag_{lag}.png"), bbox_inches='tight', dpi=150)
+                plt.savefig(os.path.join(explain_dir, f"importance_sst_lag_{lag}{file_suffix}.png"), bbox_inches='tight', dpi=150, facecolor='white')
                 plt.close()
 
         # --- CARTES SLP ---
         if n_slp_features > 0:
             slp_importances = importances[n_sst_features:].reshape(len(slp_lags_days), 53, 113)
+            
+            # Bascule lissage / brut
+            if smooth_sigma > 0.0:
+                print(f"-> Application d'un lissage Gaussien (sigma={smooth_sigma}) sur la SLP")
+                slp_plot_data = [ndimage.gaussian_filter(slp_importances[i], sigma=smooth_sigma) for i in range(len(slp_lags_days))]
+                title_suffix = f"(Lissé sigma={smooth_sigma})"
+                file_suffix = f"_smoothed_{smooth_sigma}"
+            else:
+                print("-> Génération des cartes SLP brutes (sans lissage)")
+                slp_plot_data = slp_importances
+                title_suffix = "(Brut)"
+                file_suffix = "_raw"
+
+            global_max_slp = np.max(slp_plot_data) if len(slp_plot_data) > 0 else 1.0
+
             for i, lag in enumerate(slp_lags_days):
                 fig, ax = plt.subplots(figsize=(8, 4), subplot_kw={'projection': ccrs.PlateCarree()})
                 
-                # Côtes et frontières en BLANC ou GRIS CLAIR
-                ax.coastlines(resolution='50m', color='white', linewidth=1)
-                ax.add_feature(cfeature.BORDERS, edgecolor='white', linestyle=':', alpha=0.5)
+                ax.coastlines(resolution='50m', color='black', linewidth=1)
+                ax.add_feature(cfeature.BORDERS, edgecolor='black', linestyle=':', alpha=0.5)
                 
-                im = ax.imshow(slp_importances[i], cmap='hot', origin='lower', 
-                               vmin=0, vmax=global_max_importance, 
-                               extent=extent_slp, transform=ccrs.PlateCarree())
+                im = ax.imshow(slp_plot_data[i], cmap='Reds', origin='lower', 
+                               vmin=0, vmax=global_max_slp, 
+                               extent=extent_slp, transform=ccrs.PlateCarree(),
+                               interpolation='nearest')
                 
                 gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False, alpha=0.3, linestyle='--')
                 gl.top_labels = False
                 gl.right_labels = False
 
                 plt.colorbar(im, ax=ax, label="Importance (Gain LGBM)", orientation='vertical', pad=0.02)
-                ax.set_title(f"Pixels déterminants - SLP Lag {lag} jours")
+                ax.set_title(f"Zones déterminantes - SLP Lag {lag} jours {title_suffix}")
                 
-                plt.savefig(os.path.join(explain_dir, f"importance_slp_lag_{lag}.png"), bbox_inches='tight', dpi=150)
+                plt.savefig(os.path.join(explain_dir, f"importance_slp_lag_{lag}{file_suffix}.png"), bbox_inches='tight', dpi=150, facecolor='white')
                 plt.close()
             
         print(f"Modèle, analyses et matrices sauvegardés dans :\n{outdir}")

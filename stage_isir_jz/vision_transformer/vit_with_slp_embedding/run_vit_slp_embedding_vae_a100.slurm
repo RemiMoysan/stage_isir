@@ -2,7 +2,7 @@
 #SBATCH --job-name=VitEmbVAE      # Nom du job
 #SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/vision_transformer/vit_with_slp_embedding/log/vit_emb_vae_output_%j.out   # Fichier de sortie standard (%j = ID du job)
 #SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/vision_transformer/vit_with_slp_embedding/log/vit_emb_vae_error_%j.err     # Fichier d'erreur
-#SBATCH --time=01:30:00              # Temps alloué
+#SBATCH --time=20:00:00              # Temps alloué
 #SBATCH --nodes=1                    # 1 seul noeud
 #SBATCH --ntasks=1                   # 1 seule tâche PyTorch
 #SBATCH --gres=gpu:1                 # 1 seul GPU A100 : 80 Go
@@ -53,20 +53,21 @@ srun python main.py \
     --update 0 \
     --machine jean-zay-work \
     --embed_method vae \
-    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/vae_slp/ConvVAE_bs128_lr0.0001_NDJF_beta50.0_80members_latent1_duree30d/best_vae.pth" \
+    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/vae_slp/ConvVAE_bs128_lr0.0001_NDJF_beta50.0_80members_latent1_duree10d/best_vae.pth" \
     --seed 42 \
     --nb_members_train 50 \
-    --nb_members_val 5 \
+    --nb_members_val 3 \
     --latent_dim 1 \
-    --sst_lags_days 35 65 95 \
+    --sst_lags_days 15 30 45 \
     --slp_lags_days \
     --winter_months 1 2 \
-    --bs 128 \
-    --lr 5e-5 \
-    --dr 0.2 \
-    --nb_epochs 2 \
-    --duree_lissage 30 \
-    --beta_kld 50.0
+    --bs 32 \
+    --lr 1e-5 \
+    --dr 0.4 \
+    --nb_epochs 25 \
+    --duree_lissage 10 \
+    --beta_kld 50.0 \
+    --use_lags_attention 
 
 
 # 5. NETTOYAGE INDISPENSABLE

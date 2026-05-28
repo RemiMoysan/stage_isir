@@ -53,19 +53,19 @@ srun python main.py \
     --update 0 \
     --machine jean-zay-work \
     --embed_method vae \
-    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/vae_slp/ConvVAE_bs128_lr0.0001_NDJF_beta500.0_80members_latent1_duree10d/best_vae.pth" \
-    --seed 42 \
+    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/vae_slp/ConvVAE_bs128_lr0.0001_NDJF_beta500.0_80members_latent1_duree30d/best_vae.pth" \
+    --seed 1 \
     --nb_members_train 50 \
-    --nb_members_val 5 \
+    --nb_members_val 3 \
     --latent_dim 1 \
-    --sst_lags_days 35 65 95 \
+    --sst_lags_days 15 30 45 \
     --slp_lags_days \
     --winter_months 1 2 \
     --bs 128 \
-    --lr 5e-5 \
-    --dr 0.2 \
-    --nb_epochs 2 \
-    --duree_lissage 10 \
+    --lr 1e-5 \
+    --dr 0.4 \
+    --nb_epochs 25 \
+    --duree_lissage 30 \
     --beta_kld 500.0
 
 # 5. NETTOYAGE INDISPENSABLE

@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=pc1_composites      # Nom du job
-#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/pc1_composites_%j.out          # Fichier de sortie standard (%j = numéro du job)
-#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/pc1_composites_%j.out           # Fichier d'erreur (fusionné avec la sortie)
-#SBATCH -A uxg@cpu                       # Allocation du projet (uxg) sur les heures CPU
-#SBATCH --time=20:00:00                  # Temps d'exécution 
+#SBATCH --job-name=pc1lossstd      # Nom du job
+#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/pc1lossstd_%j.out          # Fichier de sortie standard (%j = numéro du job)
+#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/pc1lossstd_%j.out           # Fichier d'erreur (fusionné avec la sortie)
+#SBATCH -A uxg@cpu                     # Allocation du projet (uxg) sur les heures CPU
 #SBATCH --partition=prepost
+#SBATCH --time=6:30:00                  # Temps d'exécution 
 #SBATCH --nodes=1                        # Un seul nœud de calcul
 #SBATCH --ntasks=1                       # Une seule tâche
 #SBATCH --cpus-per-task=10               # 10 cœurs pour accélérer Numpy/Scikit-learn
@@ -24,12 +24,11 @@ export PYTHONUSERBASE=$WORK/.local_vit_v100
 # (À adapter avec le nom exact du dossier où se trouve ton script python)
 cd $WORK/stage_isir_jz/data_analysis/
 
-# 5. Exécution du code
+# utiliser une PCA avec normalize, et de toute façon on fait juste ça pour la PC1. 
 
-srun python composites_pc1.py \
+# 5. Exécution du code
+srun python analyse_pc1_loss.py \
     --machine jean-zay-work \
-    --n_quantiles 3 \
-    --model_path /lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent1_NDJF_87members_normalizeTrue_duree_lissage10/best_pca_model.joblib \
-    --normalize \
     --duree_lissage 10 \
-    --number_of_members 89
+    --model_dir /lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent1_NDJF_87members_normalizeTrue_duree_lissage10/ \
+    --nb_members_train 87

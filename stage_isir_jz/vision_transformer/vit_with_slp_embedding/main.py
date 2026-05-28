@@ -59,7 +59,7 @@ if __name__ == "__main__":
     parser.add_argument('--winter_months', type=int, nargs='+', default=[1, 2], help='Mois target à sélectionner pour l\'entraînement (ex: --winter_months 1 2 pour janvier et février)')
     parser.add_argument('--beta_kld', type=float, default=1.0, help='Coefficient de la composante KL divergence dans la loss du VAE (si utilisé)')
     parser.add_argument('--normalize', action='store_true', help='PCA normalisé ou non')
-
+    parser.add_argument('--use_lags_attention', action='store_true', help='Activer l\'attention temporelle entre les lags')
     
     args = parser.parse_args()
 
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     nb_members_val = args.nb_members_val
 
     print("Arg Parameters:")
-    print(f"  Latent Dim: {latent_dim}", f" SST Lags: {sst_lags_days}", f" SLP Lags: {slp_lags_days}", f" Batch Size: {bs}", f" Learning Rate: {lr}", f" Dropout Rate: {dr}", f" Winter Months: {winter_months}", f" Smoothing Duration: {duree_lissage}", f" Number of Epochs: {nb_epochs}", f" Number of Training Members: {nb_members_train}", f" Number of Validation Members: {nb_members_val}\n")
+    print(f"  Latent Dim: {latent_dim}", f" use_lags_attention: {args.use_lags_attention}",f" SST Lags: {sst_lags_days}", f" SLP Lags: {slp_lags_days}", f" Batch Size: {bs}", f" Learning Rate: {lr}", f" Dropout Rate: {dr}", f" Winter Months: {winter_months}", f" Smoothing Duration: {duree_lissage}", f" Number of Epochs: {nb_epochs}", f" Number of Training Members: {nb_members_train}", f" Number of Validation Members: {nb_members_val}\n")
 
     patience = 10000
     target_indices = {100, 1000, 2000,3000,4000,4500,5000,6000,7000, 8000} # pour les plots de comparaison de validation. 
@@ -117,9 +117,9 @@ if __name__ == "__main__":
     val_members = all_members[-nb_members_val:]
 
     if args.embed_method == 'pca':
-        outdir_name = f"ViT_Latent_{args.embed_method}_normalize_{args.normalize}_embedding_{latent_dim}_lags_{'_'.join(map(str, sst_lags_days))}_sst_{'_'.join(map(str, slp_lags_days))}_slp_bs{bs}_lr{lr}_dr{dr}_months_{'_'.join(map(str, winter_months))}_train{nb_members_train}_val_{nb_members_val}_members_seed_{args.seed}_{duree_lissage}d"
+        outdir_name = f"ViT_Latent_lags_attention_{args.use_lags_attention}_{args.embed_method}_normalize_{args.normalize}_embedding_{latent_dim}_lags_{'_'.join(map(str, sst_lags_days))}_sst_{'_'.join(map(str, slp_lags_days))}_slp_bs{bs}_lr{lr}_dr{dr}_months_{'_'.join(map(str, winter_months))}_train{nb_members_train}_val_{nb_members_val}_members_seed_{args.seed}_{duree_lissage}d"
     elif args.embed_method == 'vae':
-        outdir_name = f"ViT_Latent_{args.embed_method}_beta_{args.beta_kld}_embedding_{latent_dim}_lags_{'_'.join(map(str, sst_lags_days))}_sst_{'_'.join(map(str, slp_lags_days))}_slp_bs{bs}_lr{lr}_dr{dr}_months_{'_'.join(map(str, winter_months))}_train{nb_members_train}_val_{nb_members_val}_members_seed_{args.seed}_{duree_lissage}d"
+        outdir_name = f"ViT_Latent_lags_attention_{args.use_lags_attention}_{args.embed_method}_beta_{args.beta_kld}_embedding_{latent_dim}_lags_{'_'.join(map(str, sst_lags_days))}_sst_{'_'.join(map(str, slp_lags_days))}_slp_bs{bs}_lr{lr}_dr{dr}_months_{'_'.join(map(str, winter_months))}_train{nb_members_train}_val_{nb_members_val}_members_seed_{args.seed}_{duree_lissage}d"
     outdir = os.path.join(base_home, outdir_name)
     os.makedirs(outdir, exist_ok=True)
 
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     # 5. INITIALISATION DU VISION TRANSFORMER
     # ============================================================
     model = ViT_Latent_SLP_Multimodal(
-        sst_size=(85, 360), slp_size=(53, 113), patch_size_sst=(5, 10), patch_size_slp=(5, 10), in_chans_sst=len(sst_lags_days), in_chans_slp=len(slp_lags_days), embed_dim=128, depth=4, num_heads=4, dr=dr, nb_out=latent_dim
+        sst_size=(85, 360), slp_size=(53, 113), patch_size_sst=(5, 10), patch_size_slp=(5, 10), in_chans_sst=len(sst_lags_days), in_chans_slp=len(slp_lags_days), embed_dim=128, depth=4, num_heads=4, dr=dr, nb_out=latent_dim, use_lags_attention=args.use_lags_attention
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)

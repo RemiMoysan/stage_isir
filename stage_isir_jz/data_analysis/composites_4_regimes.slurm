@@ -3,7 +3,7 @@
 #SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/regimes_composites_%j.out          # Fichier de sortie standard (%j = numéro du job)
 #SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/regimes_composites_%j.out           # Fichier d'erreur (fusionné avec la sortie)
 #SBATCH -A uxg@cpu                       # Allocation du projet (uxg) sur les heures CPU
-#SBATCH --time=10:00:00                  # Temps d'exécution 
+#SBATCH --time=15:00:00                  # Temps d'exécution 
 #SBATCH --partition=prepost
 #SBATCH --nodes=1                        # Un seul nœud de calcul
 #SBATCH --ntasks=1                       # Une seule tâche
@@ -31,7 +31,7 @@ cd $WORK/stage_isir_jz/data_analysis/
 srun python composites_4_regimes.py \
     --machine jean-zay-work \
     --embedding_method pca \
-    --model_path /lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent128_NDJF_87members_normalizeFalse_duree_lissage30/best_pca_model.joblib \
-    --duree_lissage 30 \
+    --model_path /lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent128_NDJF_87members_normalizeFalse_duree_lissage10/best_pca_model.joblib \
+    --duree_lissage 10 \
     --latent_dim 128 \
     --number_of_members 89

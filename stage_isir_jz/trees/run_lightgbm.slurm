@@ -47,14 +47,15 @@ srun python train_lightgbm.py \
     --machine jean-zay-work \
     --seed 42 \
     --nb_members_train 80 \
-    --nb_members_val 9 \
-    --sst_lags_days 35 65 95 \
+    --nb_members_val 7 \
+    --sst_lags_days 15 35 65 \
     --slp_lags_days \
     --winter_months 1 2 \
     --bs 128 \
     --lr 0.05 \
     --duree_lissage 30 \
     --metric mse \
+    --smooth_sigma 1.5 \
     --master_ref_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_89members_normalizeFalse_duree_lissage30_embedding_method_pca_latent_dim_128/master_reference_global.npz"
 
 

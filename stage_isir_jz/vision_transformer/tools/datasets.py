@@ -22,155 +22,8 @@ import numpy as np
 import os
 from datetime import timedelta
 
-# censé être plus rapide, je ne suis pas sûr de si cette conversion de date est plus rapide. 
-
-class Dataset_faster(torch.utils.data.Dataset):
-    def __init__(self, members, selected_months, 
-                 machine='jean-zay-work', target_type='map', num_pcs=10,
-                 sst_lags_days=[35, 65, 95], slp_lags_days=[15], 
-                 augment=False, custom_base_dir=None, duree_lissage=10):
-        
-        self.members = members
-        self.augment = augment
-        self.sst_lags_days = sst_lags_days
-        self.slp_lags_days = slp_lags_days
-        self.num_pcs = num_pcs
-        self.duree_lissage = duree_lissage
-        self.target_type = target_type
-
-        # ==========================================
-        # 1. GESTION DES CHEMINS 
-        # ==========================================
-        if custom_base_dir is not None:
-            base_dir = custom_base_dir
-        elif machine == 'jean-zay-work':
-            base_dir = '/lustre/fswork/projects/rech/uxg/uca57ub/data/'
-        elif machine == 'jean-zay-scratch':
-            base_dir = '/lustre/fsn1/projects/rech/uxg/uca57ub/data/'
-        elif machine == "mac_local":
-            base_dir = "/Users/remimoysan/Desktop/Jean_Zay/work_jz/data/"
-        elif machine == 'hacienda':
-            base_dir = '/data/moysan/data/' 
-        else:
-            raise ValueError("Machine inconnue. Choisissez 'jean-zay-work', 'jean-zay-scratch', 'hacienda'.")
-
-        path_SST = os.path.join(base_dir, 'SST/')
-        path_SLP = os.path.join(base_dir, 'SLP/')
-
-        self.data_SST = {}
-        self.data_SLP = {}
-        self.data_PC = {}
-
-        self.date_to_idx_sst = {}
-        self.date_to_idx_slp = {}
-        self.date_to_idx_pc = {}
-
-        print("Ouverture des pointeurs NetCDF (Lazy Loading) et création des index...")
-        for m in members:
-            ds_sst = xr.open_dataset(f"{path_SST}SST_anom_LE2-{m}_T_regrid.nc")
-            ds_slp = xr.open_dataset(f"{path_SLP}PSL_anom_LE2-{m}_{self.duree_lissage}d.nc")
-            
-            # OPTIMISATION : On applique les slices spatiaux et PC dès l'ouverture !
-            self.data_SST[m] = ds_sst["SST"].sel(lat=slice(-15, 70))
-            self.data_SLP[m] = ds_slp["PSL"]
-
-            if self.target_type == 'pc':
-                ds_pc = xr.open_dataset(f"{path_SLP}CESM_NDJF_10pcs_scaled-{m}_10d.nc")
-                self.data_PC[m] = ds_pc["pcs"].isel(mode=slice(0, self.num_pcs))
-
-            # Création des dictionnaires sur le premier membre
-            if m == members[0]:
-                times_sst = ds_sst.time.values
-                times_slp = ds_slp.time.values
-                
-                for i, date in enumerate(times_sst):
-                    self.date_to_idx_sst[np.datetime64(date, 'D')] = i
-                for i, date in enumerate(times_slp):
-                    self.date_to_idx_slp[np.datetime64(date, 'D')] = i
-
-                if self.target_type == 'pc':
-                    times_pc = ds_pc.time.values
-                    for i, date in enumerate(times_pc):
-                        self.date_to_idx_pc[np.datetime64(date, 'D')] = i
-
-        # Filtrage des dates valides
-        all_time_np = times_slp
-        dates_pd = pd.to_datetime(all_time_np)
-        valid_mask = dates_pd.month.isin(selected_months) & (dates_pd.year > dates_pd.year.min())
-        self.list_dates = all_time_np[valid_mask].tolist()
-
-        print(f"Membres : {len(members)} | Jours valides par membre : {len(self.list_dates)}")
-    
-    def augment_sst(self, X, noise_std=0.05):
-        noise = noise_std * torch.randn_like(X)
-        return X + noise
-
-    def __len__(self):
-        return len(self.members) * len(self.list_dates)
-
-    def __getitem__(self, index):
-        member_idx = index // len(self.list_dates)
-        member_id = self.members[member_idx]
-        t_target = self.list_dates[index % len(self.list_dates)]
-
-        t_target_np = np.datetime64(t_target, 'D')
-        sst_std, slp_std = 0.707, 596
-        
-        # 1. Extraction SST
-        sst_arrays = []
-        for lag in self.sst_lags_days:
-            lag_date = t_target_np - np.timedelta64(lag, 'D')
-            idx = self.date_to_idx_sst.get(lag_date)
-            
-            # SÉCURITÉ : Si la date de lag est hors limites, on met des zéros
-            if idx is not None:
-                # Lecture ultra-pure : le slice a déjà été fait !
-                arr = self.data_SST[member_id].isel(time=idx).values
-            else:
-                arr = np.zeros((85, 360)) # Taille de la SST après le slice latitudinal
-            sst_arrays.append(arr)
-            
-        X_sst = torch.nan_to_num(torch.tensor(np.array(sst_arrays)), nan=0.0).float() / sst_std
-        X_sst = torch.roll(X_sst, shifts=180, dims=-1)
-        
-        if self.augment:
-            X_sst = self.augment_sst(X_sst)
-        
-        # 2. Extraction SLP
-        slp_arrays = []
-        for lag in self.slp_lags_days:
-            lag_date = t_target_np - np.timedelta64(lag, 'D')
-            idx = self.date_to_idx_slp.get(lag_date)
-            
-            if idx is not None:
-                arr = self.data_SLP[member_id].isel(time=idx).values
-            else:
-                arr = np.zeros((53, 113)) # Taille de la SLP
-            slp_arrays.append(arr)
-            
-        if slp_arrays:
-            X_slp = torch.nan_to_num(torch.tensor(np.array(slp_arrays)), nan=0.0).float() / slp_std
-        else:
-            X_slp = torch.empty(0, 53, 113)
-        
-        # 3. Extraction MAP SLP cible
-        idx_target = self.date_to_idx_slp.get(t_target_np)
-        # Ici on suppose que la target t=0 est toujours dans le dataset
-        slp_target_map = self.data_SLP[member_id].isel(time=idx_target).values
-        y_map = torch.tensor(np.array(slp_target_map)).float() / slp_std
-
-        # 4. Target Finale
-        if self.target_type == 'map':
-            y_target = y_map 
-        else:
-            idx_pc = self.date_to_idx_pc.get(t_target_np)
-            # Lecture pure : le slice num_pcs a déjà été fait !
-            pc_target = self.data_PC[member_id].isel(time=idx_pc).values
-            y_target = torch.tensor(np.array(pc_target)).float()
-
-        return X_sst, X_slp, y_target.unsqueeze(0), y_map.unsqueeze(0), str(t_target_np), member_id
-    
-# la même chose mais sans la conversion des dates qui parait superflu
+# censé être plus rapide mais bof
+#Eventuellement à utiliser à la place de Dataset normal mais je ne suis pas 100% convaincu. 
 
 class Dataset_faster2(torch.utils.data.Dataset):
     def __init__(self, members, selected_months, 
@@ -240,7 +93,7 @@ class Dataset_faster2(torch.utils.data.Dataset):
 
         # Filtrage des dates valides
         all_time_da = self.data_SLP[members[0]].time
-        valid_mask = all_time_da.dt.month.isin(selected_months) & (all_time_da.dt.year > all_time_da.dt.year.min())
+        valid_mask = all_time_da.dt.month.isin(selected_months) & (all_time_da.dt.year > all_time_da.dt.year.min() ) & (all_time_da.dt.year < all_time_da.dt.year.max() -1)
         self.list_dates = all_time_da.sel(time=valid_mask.values).values.tolist()
 
         print(f"Membres : {len(members)} | Jours valides par membre : {len(self.list_dates)}")
@@ -324,7 +177,7 @@ class Dataset(torch.utils.data.Dataset):
     def __init__(self, members, selected_months, 
                  machine='jean-zay-work', target_type='map', num_pcs=10,
                  sst_lags_days=[35, 65, 95], slp_lags_days=[15], 
-                 augment=False, custom_base_dir=None, duree_lissage=10):
+                 augment=False, custom_base_dir=None, duree_lissage=10, roll_sst=False):
         """
         Args:
             machine (str): 'jean-zay-work' ou 'jean-zay-scratch' ou 'hacienda', adapte les chemins automatiquement, ou 'custom' pour fournir un chemin personnalisé vers un dossier contennant les sous-dossiers 'SST' et 'SLP'.
@@ -336,7 +189,7 @@ class Dataset(torch.utils.data.Dataset):
         self.slp_lags_days = slp_lags_days
         self.num_pcs = num_pcs
         self.duree_lissage = duree_lissage
-        
+        self.roll_sst = roll_sst
         assert target_type in ['map', 'pc'], "target_type doit être 'map' ou 'pc'"
         self.target_type = target_type
 
@@ -381,7 +234,11 @@ class Dataset(torch.utils.data.Dataset):
         all_time = self.data_SLP[members[0]].time
         valid_dates = all_time.sel(time=all_time.dt.month.isin(selected_months))
         years = valid_dates.dt.year
-        valid_dates = valid_dates.sel(time=years > years.min())
+        # CORRECTION : On combine les deux conditions (passé et futur) en une seule ligne
+        valid_mask = (years > years.min()) & (years < years.max() - 1)
+        valid_dates = valid_dates.sel(time=valid_mask)
+         # première date : 1er ou 2 janvier 1851
+        # sécurité si on regarde des lags futurs, dernière date 1er janvier 2015
         self.list_dates = valid_dates.values.tolist()
 
         print(f"Dataset initialisé sur {machine.upper()}.")
@@ -409,8 +266,9 @@ class Dataset(torch.utils.data.Dataset):
         # 1. Extraction SST Inputs (sans ouvrir le fichier, on tape dans le dict)
         sst = self.data_SST[member_id].sel(time=dates_sst, lat=slice(-15, 70))
         X_sst = torch.nan_to_num(torch.tensor(np.array(sst.data)), nan=0.0).float() / sst_std
-        # X_sst = torch.roll(X_sst, shifts=180, dims=-1) # facultatif pour le ViT (pas de problème de bord)
-        
+        if self.roll_sst: # facultatif pour le ViT (pas de problème de bord)
+            X_sst = torch.roll(X_sst, shifts=180, dims=-1)
+
         if self.augment:
             X_sst = self.augment_sst(X_sst)
         

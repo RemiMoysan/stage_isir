@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=CnnPCAEmb   # Nom du job
-#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_with_slp_embedding/log/cnn_output_%j.out   # Fichier de sortie standard (%j = ID du job)
-#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_with_slp_embedding/log/cnn_error_%j.err     # Fichier d'erreur
+#SBATCH --job-name=ViT_classifier      # Nom du job
+#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/vision_transformer/vit_classifier/log/vit_output_%j.out   # Fichier de sortie standard (%j = ID du job)
+#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/vision_transformer/vit_classifier/log/vit_error_%j.err     # Fichier d'erreur
 #SBATCH --time=20:00:00              # Temps alloué
 #SBATCH --nodes=1                    # 1 seul noeud
 #SBATCH --ntasks=1                   # 1 seule tâche PyTorch
@@ -10,7 +10,8 @@
 #SBATCH --hint=nomultithread         # Désactive l'hyperthreading
 #SBATCH --account=uxg@a100           # Ton projet
 #SBATCH --partition=gpu_p5           # <-- AJOUT : On tape dans la partition A100
-#SBATCH -C a100                      # <-- AJOUT : On force la carte A100
+#SBATCH -C a100   
+
 
 # 1. Nettoyage de l'environnement
 module purge
@@ -21,14 +22,14 @@ module load pytorch-gpu/py3/2.0.0
 export PYTHONUSERBASE=$WORK/.local_vit_a100 
 
 # 3. Déplacement dans ton répertoire de travail
-cd $WORK/stage_isir_jz/cnn/cnn_with_slp_embedding/
+cd $WORK/stage_isir_jz/vision_transformer/vit_classifier/
 
 # --- DÉBUT DES AJOUTS POUR LE MONITORING ---
 
 # Création du dossier 'log' s'il n'existe pas encore
 mkdir -p log
 
-# Chemins des fichiers (relatifs au dossier actuel vit_with_full_slp)
+# Chemins des fichiers (relatifs au dossier actuel vit_classifier)
 LOG_GPU="log/gpu_usage_${SLURM_JOB_ID}.log"
 LOG_CPU="log/cpu_usage_${SLURM_JOB_ID}.log"
 
@@ -52,21 +53,23 @@ PID_CPU=$!
 srun python main.py \
     --update 0 \
     --machine jean-zay-work \
-    --embed_method pca \
-    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent1_NDJF_87members_normalizeTrue_duree_lissage30/best_pca_model.joblib" \
-    --seed 42 \
+    --seed 1 \
     --nb_members_train 50 \
     --nb_members_val 3 \
-    --latent_dim 1 \
-    --sst_lags_days 15 35 45 \
+    --sst_lags_days "15" \
     --slp_lags_days \
     --winter_months 1 2 \
-    --bs 128 \
-    --lr 1e-5 \
-    --dr 0.5 \
+    --bs 32 \
+    --lr 5e-5 \
+    --dr 0.4 \
     --nb_epochs 25 \
     --duree_lissage 10 \
-    --normalize
+    --metric mse \
+    --use_lags_attention \
+    --master_ref_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_89members_normalizeFalse_duree_lissage10_embedding_method_pca_latent_dim_128/master_reference_global.npz"
+
+
+
 
 # 5. NETTOYAGE INDISPENSABLE
 # On tue les boucles de monitoring pour que le job SLURM puisse se terminer proprement
