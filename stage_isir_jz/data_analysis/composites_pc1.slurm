@@ -26,10 +26,14 @@ cd $WORK/stage_isir_jz/data_analysis/
 
 # 5. Exécution du code
 
+#    --lat_weight \
+
 srun python composites_pc1.py \
     --machine jean-zay-work \
-    --n_quantiles 3 \
-    --model_path /lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent1_NDJF_87members_normalizeTrue_duree_lissage10/best_pca_model.joblib \
+    --n_quantiles 5 \
+    --model_path /lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/monthly_reduction/IPCA_latent1_winter_months_11_87members_normalizeTrue_monthly_reduction_wgtFalse_slp_std436.44/best_pca_model.joblib \
     --normalize \
     --duree_lissage 10 \
-    --number_of_members 89
+    --number_of_members 89 \
+    --winter_months 2 \
+    --monthly_reduction \

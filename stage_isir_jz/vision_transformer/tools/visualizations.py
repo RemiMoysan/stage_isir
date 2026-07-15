@@ -18,7 +18,8 @@ from datetime import timedelta, datetime
 extent_slp = [-100, 40, 20, 70] 
 #extent_sst = [0, 360, -20, 80]  # ou [-180,180,-20,80] selon si on a fait rolling ou pas... EN FAIT je crois que c'est [-180, 180, -15, 70]
 extent_sst = [-180, 180, -15, 70] # cf Dataset qui fait slice sur la latitude et qui décale de 180 les longitudes (si on décommente torch.roll dans Dataset) 
-# je crois que .set_extent est superflu 
+# je crois que .set_extent est superflu : au final non je ne crois pas (ça dépend ??)
+# extent_sst dans ces fonctions de visualisation pour l'instant. 
 
 # def loss_figure(epochs, train_losses, val_losses, outdir_new, epoch_times=None):
 #     """
@@ -59,18 +60,26 @@ extent_sst = [-180, 180, -15, 70] # cf Dataset qui fait slice sur la latitude et
 #     plt.savefig(figs_filename)
 #     plt.close()
 
-def loss_figure(epochs, train_losses, val_losses, outdir_new, epoch_times=None, per_member_val_losses=None):
+def loss_figure(epochs, train_losses, val_losses, outdir_new, epoch_times=None, per_member_val_losses=None, train_loss_label="Train Loss", val_loss_label="Val Loss (global)", name = "Fig_loss-evolution-during-training.png",test_losses=None):
     """
     Trace la courbe d'entraînement + courbe de validation globale (si fournie)
     et, optionnellement, une courbe par membre (per_member_val_losses: dict member -> list).
     """
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 5))
+
+    if len(val_losses) == 1:
+        marker = 'o'
+    else:        
+        marker = None
     
-    ax.plot(range(1, len(train_losses) + 1), train_losses, label='Train Loss', color='C0')
+    ax.plot(range(1, len(train_losses) + 1), train_losses, label=train_loss_label, color='C0', marker=marker)
     
-    if val_losses is not None and len(val_losses) > 0:
-        ax.plot(range(1, len(val_losses) + 1), val_losses, label='Val Loss (global)', color='C1')
+    if val_losses:
+        ax.plot(range(1, len(val_losses) + 1), val_losses, label=val_loss_label, color='C1', marker=marker)
     
+    if test_losses:
+        ax.plot(range(1, len(test_losses) + 1), test_losses, label='Test Loss', color='C3', marker=marker)
+
     # Traces par membre (optionnel)
     if per_member_val_losses:
         cmap = plt.get_cmap('tab20')
@@ -78,7 +87,7 @@ def loss_figure(epochs, train_losses, val_losses, outdir_new, epoch_times=None, 
             if hist is None or len(hist) == 0:
                 continue
             x = range(1, min(len(hist), epochs) + 1)
-            ax.plot(x, hist[:len(x)], label=f'Val {member}', color=cmap((i+2) % 20), linestyle='--', alpha=0.9)
+            ax.plot(x, hist[:len(x)], label=f'Val {member}', color=cmap((i+2) % 20), linestyle='--', alpha=0.9,marker=marker)
     
     ax.set_xlabel('Epochs')
     ax.set_ylabel('Loss')
@@ -95,7 +104,7 @@ def loss_figure(epochs, train_losses, val_losses, outdir_new, epoch_times=None, 
         ax2.set_xticklabels([f"{epoch_times[i-1]:.1f}m" for i in tick_indices])
         ax2.set_xlabel("Temps d'entraînement cumulé (minutes)")
     
-    figs_file = "Fig_loss-evolution-during-training.png"
+    figs_file = name
     figs_filename = os.path.join(outdir_new, figs_file)
     plt.tight_layout()
     plt.savefig(figs_filename)
@@ -146,7 +155,7 @@ def accuracy_figure(epochs, train_accuracies, val_accuracies, outdir_new, epoch_
     plt.savefig(figs_filename)
     plt.close()
 
-def loss_first_epoch(batch_losses, baseline_losses, outdir):
+def loss_first_epoch(batch_losses, baseline_losses, outdir,label = "Train",batch_indexes = None, epoch_num = 1,batch_test_losses = None):
     """
     Trace et sauvegarde l'évolution de la loss par batch lors de la première époque,
     en la comparant batch par batch avec une baseline (prédiction = 0).
@@ -154,8 +163,15 @@ def loss_first_epoch(batch_losses, baseline_losses, outdir):
     plt.figure(figsize=(10, 6))
     
     # Courbe d'entraînement du modèle
-    plt.plot(batch_losses, label='Train Loss (ViT)', color='blue')
-    
+    if batch_indexes is not None:
+        plt.plot(batch_indexes, batch_losses, label=f'{label} Loss', color='blue')
+        if batch_test_losses:
+            plt.plot(batch_indexes, batch_test_losses, label=f'{label} Test Loss', color='green')
+    else:
+        plt.plot(batch_losses, label=f'{label} Loss', color='blue')
+        if batch_test_losses:
+            plt.plot(batch_test_losses, label=f'Test Loss', color='green')
+
     # Courbe de la baseline évaluée sur les mêmes batchs
     plt.plot(baseline_losses, label='Baseline (Pred = 0)', color='red', linestyle='--', alpha=0.5)
     
@@ -163,19 +179,19 @@ def loss_first_epoch(batch_losses, baseline_losses, outdir):
     mean_baseline = np.mean(baseline_losses)
     plt.axhline(y=mean_baseline, color='red', linestyle='--', linewidth=1.5,label=f'Baseline Moyenne : {mean_baseline:.4f}')
 
-    plt.xlabel('Batch Index')
-    plt.ylabel('MSE Loss')
-    plt.title('Train Loss vs Baseline per Batch - Epoch 1')
+    plt.xlabel('Batch Index') if label == "Train" else plt.xlabel(f'Epoch {epoch_num} progression (from 0 to the last batch)')
+    plt.ylabel('Loss')
+    plt.title(f"{label} Loss vs Baseline per Batch - Epoch {epoch_num}")
     plt.legend()
     plt.grid(True, linestyle=':', alpha=0.6)
     plt.tight_layout()
     
-    plot_path = os.path.join(outdir, "epoch1_batch_loss.png")
+    plot_path = os.path.join(outdir, f"epoch{epoch_num}_batch_{label}_loss.png")
     plt.savefig(plot_path)
     plt.close()
-    print(f"-> Plot de la loss par batch pour l'époque 1 sauvegardé dans {plot_path}")
+    print(f"-> Plot de la loss par batch pour l'époque {epoch_num} sauvegardé dans {plot_path}")
 
-def loss_acc_first_epoch(batch_losses, baseline_losses, batch_accs, baseline_accs, outdir):
+def loss_acc_first_epoch(batch_losses, baseline_losses, batch_accs, baseline_accs, outdir,label = "Train",batch_indexes = None, epoch_num = 1):
     """
     Trace et sauvegarde l'évolution de la loss ET de l'accuracy par batch 
     lors de la première époque, comparées à une baseline de classification.
@@ -183,8 +199,12 @@ def loss_acc_first_epoch(batch_losses, baseline_losses, batch_accs, baseline_acc
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
     
     # --- Plot de la Loss ---
-    ax1.plot(batch_losses, label='Train Loss (ViT)', color='blue')
-    ax1.plot(baseline_losses, label='Baseline Loss (Priors)', color='red', linestyle='--', alpha=0.5)
+    if batch_indexes is not None:
+        ax1.plot(batch_indexes, batch_losses, label=f'{label} Loss epoch {epoch_num}', color='blue')
+        ax1.plot(batch_indexes, baseline_losses, label=f'Baseline Loss', color='red', linestyle='--', alpha=0.5)
+    else:
+        ax1.plot(batch_losses, label=f'{label} Loss epoch {epoch_num}', color='blue')
+        ax1.plot(baseline_losses, label='Baseline Loss', color='red', linestyle='--', alpha=0.5)
 
     # NOUVEAU : Ligne horizontale pour la moyenne de la Baseline Loss
     mean_b_loss = np.mean(baseline_losses)
@@ -192,28 +212,32 @@ def loss_acc_first_epoch(batch_losses, baseline_losses, batch_accs, baseline_acc
 
     ax1.set_xlabel('Batch Index')
     ax1.set_ylabel('CrossEntropy Loss')
-    ax1.set_title('Train Loss vs Baseline - Epoch 1')
+    ax1.set_title(f'{label} Loss vs Baseline - Epoch {epoch_num}')
     ax1.legend()
     ax1.grid(True, linestyle=':', alpha=0.6)
     
-    # --- Plot de l'Accuracy ---
-    ax2.plot(batch_accs, label='Train Accuracy (ViT)', color='green')
-    ax2.plot(baseline_accs, label='Baseline Acc (Majority Class)', color='orange', linestyle='--', alpha=0.5)
+    # --- Plot de l'Accuracy (CORRIGÉ ICI) ---
+    if batch_indexes is not None:
+        ax2.plot(batch_indexes, batch_accs, label=f'{label} Accuracy epoch {epoch_num}', color='green')
+        ax2.plot(batch_indexes, baseline_accs, label='Baseline Acc (Majority Class)', color='orange', linestyle='--', alpha=0.5)
+    else:
+        ax2.plot(batch_accs, label=f'{label} Accuracy epoch {epoch_num}', color='green')
+        ax2.plot(baseline_accs, label='Baseline Acc (Majority Class)', color='orange', linestyle='--', alpha=0.5)
 
     # NOUVEAU : Ligne horizontale pour la moyenne de la Baseline Accuracy
     mean_b_acc = np.mean(baseline_accs)
     ax2.axhline(y=mean_b_acc, color='orange', linestyle='--', linewidth=1.5,label=f'Baseline Acc Moy : {mean_b_acc:.2f}%')
     ax2.set_xlabel('Batch Index')
     ax2.set_ylabel('Accuracy (%)')
-    ax2.set_title('Train Accuracy vs Baseline - Epoch 1')
+    ax2.set_title(f'{label} Accuracy vs Baseline - Epoch {epoch_num}')
     ax2.legend()
     ax2.grid(True, linestyle=':', alpha=0.6)
     
     plt.tight_layout()
-    plot_path = os.path.join(outdir, "epoch1_batch_metrics.png")
+    plot_path = os.path.join(outdir, f"epoch{epoch_num}_{label}_batch_metrics.png")
     plt.savefig(plot_path)
     plt.close()
-    print(f"-> Plot des métriques (Loss & Acc) par batch pour l'époque 1 sauvegardé dans {plot_path}")
+    print(f"-> Plot des métriques (Loss & Acc) par batch pour l'époque {epoch_num} sauvegardé dans {plot_path}")
 
 def plot_and_save_maps(slp_true_list, slp_pred_list, time_list, outdir, epoch=None, fixed_indices=[100, 1000, 2000,3000,4000,4500,5000,6000,7000, 8000], duree_moyennage = 1):
     """
@@ -652,4 +676,77 @@ def old_plot_confusion_matrix(y_true, y_pred, outdir, master_ref, filename='conf
     plt.title('Matrice de Confusion \nAccuracy : {accuracy:.2f}%', fontsize=14, fontweight='bold')
     plt.tight_layout()
     plt.savefig(os.path.join(outdir, filename), dpi=200)
+    plt.close()
+
+def plot_correlation_evolution(train_corrs, val_corrs, outdir, train_ks=None, val_ks=None, test_corrs=None, test_ks=None, epoch_1=False, epoch_2=False, batch_indexes=None):
+    plt.figure(figsize=(10, 5))
+    
+    if not epoch_1 and not epoch_2:
+        # --- Mode Fin d'Époque ---
+        if len(train_corrs) > 0:
+            plt.plot(range(1, len(train_corrs) + 1), train_corrs, label='Train Correlation (r)', color='C0', linewidth=1.5) 
+            if train_ks is not None and len(train_ks) == len(train_corrs):
+                plt.plot(range(1, len(train_ks) + 1), train_ks, label='Train Calibrage (k = $\sigma_{p}/\sigma_{t}$)', color='C0', linestyle='--', alpha=0.7)
+        
+        plt.plot(range(1, len(val_corrs) + 1), val_corrs, label='Val Correlation (r)', color='C1', linewidth=1.5)
+        if val_ks is not None and len(val_ks) == len(val_corrs):
+            plt.plot(range(1, len(val_ks) + 1), val_ks, label='Val Calibrage (k = $\sigma_{p}/\sigma_{t}$)', color='C1', linestyle='--', alpha=0.7)
+            
+        if test_corrs:
+            plt.plot(range(1, len(test_corrs) + 1), test_corrs, label='Test Correlation (r)', color='C2', linewidth=1.5)
+            if test_ks is not None and len(test_ks) == len(test_corrs):
+                plt.plot(range(1, len(test_ks) + 1), test_ks, label='Test Calibrage (k = $\sigma_{p}/\sigma_{t}$)', color='C2', linestyle='--', alpha=0.7)
+    else:
+        # --- Mode Intra-Époque ---
+        plt.plot(batch_indexes, val_corrs, label='Val Correlation (r)', color='C1', linewidth=1.5)
+        if val_ks is not None and len(val_ks) == len(val_corrs):
+            plt.plot(batch_indexes, val_ks, label='Val Calibrage (k)', color='C1', linestyle='--', alpha=0.7)
+            
+        if test_corrs:
+            plt.plot(batch_indexes, test_corrs, label='Test Correlation (r)', color='C2', linewidth=1.5)
+            if test_ks is not None and len(test_ks) == len(test_corrs):
+                plt.plot(batch_indexes, test_ks, label='Test Calibrage (k)', color='C2', linestyle='--', alpha=0.7)
+
+    plt.xlabel('Geometric Batch Index (Epoch 1)') if epoch_1 else plt.xlabel('Linear Batch Index (Epoch 2)') if epoch_2 else plt.xlabel('Epochs')
+    plt.ylabel('Value')
+    plt.title('Evolution de la corrélation (r) et de la variance relative (Calibration k)')
+    plt.legend(loc='best')
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    
+    name = 'Fig_correlation_evolution_epoch1.png' if epoch_1 else 'Fig_correlation_evolution_epoch2.png' if epoch_2 else 'Fig_correlation_evolution.png'
+    plt.savefig(os.path.join(outdir, name), dpi=300)
+    plt.close()
+
+def plot_r2_R2_evolution(train_corrs, val_corrs, train_R2, val_R2, outdir, epoch_1=False, epoch_2=False, batch_indexes=None, test_corrs=None, test_R2=None):
+    plt.figure(figsize=(10, 5))
+    
+    if not epoch_1 and not epoch_2:
+        plt.plot(range(1, len(train_corrs) + 1), np.array(train_corrs)**2, label='Train Correlation coefficient squared r^2', color='C0') 
+        plt.plot(range(1, len(val_corrs) + 1), np.array(val_corrs)**2, label='Val Correlation coefficient squared r^2', color='C1')
+        if test_corrs:
+            plt.plot(range(1, len(test_corrs) + 1), np.array(test_corrs)**2, label='Test Correlation coefficient squared r^2', color='C2')
+        plt.plot(range(1, len(train_R2) + 1), train_R2, label='Train R^2', color='C3')
+        plt.plot(range(1, len(val_R2) + 1), val_R2, label='Val R^2', color='C4')
+        if test_R2:
+            plt.plot(range(1, len(test_R2) + 1), test_R2, label='Test R^2', color='C5')
+
+    else:
+        plt.plot(batch_indexes, np.array(val_corrs)**2, label='Val Correlation coefficient squared r^2', color='C1')
+        
+        if test_corrs:
+            plt.plot(batch_indexes, np.array(test_corrs)**2, label='Test Correlation coefficient squared r^2', color='C2')
+        plt.plot(batch_indexes, val_R2, label='Val R^2', color='C4')
+        if test_R2:
+            plt.plot(batch_indexes, test_R2, label='Test R^2', color='C5')
+
+    plt.xlabel('Geometric Batch Index (Epoch 1)') if epoch_1 else plt.xlabel('Linear Batch Index (Epoch 2)') if epoch_2 else plt.xlabel('Epochs')
+    plt.ylabel('Pearson Correlation squared, R^2') # Mis à jour pour refléter l'axe Y
+    plt.title('Comparaison de r^2 et R^2 dans l\'espace latent')
+    plt.legend()
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    
+    name = 'Fig_r2_R2_evolution_epoch1.png' if epoch_1 else 'Fig_r2_R2_evolution_epoch2.png' if epoch_2 else 'Fig_r2_R2_evolution.png'
+    plt.savefig(os.path.join(outdir, name))
     plt.close()

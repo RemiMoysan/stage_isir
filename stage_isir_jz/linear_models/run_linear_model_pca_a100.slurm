@@ -53,18 +53,18 @@ srun python train_linear_model.py \
     --update 0 \
     --machine jean-zay-work \
     --embed_method pca \
-    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent1_NDJF_87members_normalizeTrue_duree_lissage30/best_pca_model.joblib" \
+    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent1_NDJF_87members_normalizeTrue_duree_lissage10/best_pca_model.joblib" \
     --seed 42 \
-    --nb_members_train 80 \
-    --nb_members_val 5 \
+    --nb_members_train 1 \
+    --nb_members_val 1 \
     --latent_dim 1 \
-    --sst_lags_days "-7" "35" \
+    --sst_lags_days "-7" \
     --slp_lags_days \
     --winter_months 1 2 \
     --bs 128 \
     --lr 5e-5 \
     --nb_epochs 15 \
-    --duree_lissage 30 \
+    --duree_lissage 0 \
     --normalize \
     --alpha_penalty 0.0 \
     --penalty_type l2

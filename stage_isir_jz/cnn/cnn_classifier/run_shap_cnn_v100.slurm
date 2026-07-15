@@ -12,6 +12,7 @@
 #SBATCH --account=uxg@v100           # Ton projet
 #SBATCH --qos=qos_gpu-dev            # Qualité de service pour les GPUs
 
+
 # 1. Nettoyage de l'environnement
 module purge
 
@@ -46,18 +47,27 @@ PID_CPU=$!
 
 # --- FIN DES AJOUTS POUR LE MONITORING ---
 
+#     --early_fusion_sst \
+# --roll_sst
 
 # 4. Lancement de ton script Python
-srun python compute_shap_cnn.py \
+srun python shap_cnn.py \
     --machine jean-zay-work \
-    --model_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_classifier/CNN_classifier_lags_-7_35_65_95_sst__slp_bs128_lr1e-05_dr0.4_months_1_2_train50_val_5_members_seed_1_30d_metric_mse/final_model_CNN_bs128.pth" \
-    --sst_lags_days -7 35 65 95 \
+    --model_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_classifier/CNN_classifier_early_fusion_sst_False_lags_5_15_35_sst__slp_bs128_lr5e-05_dr0.4_months_1_2_train50_val_3_members_seed_1_10d_metric_mse_roll_sst_False/final_model_CNN_bs128.pth" \
+    --sst_lags_days 5 15 35 \
     --slp_lags_days \
     --winter_months 1 2 \
-    --duree_lissage 30 \
+    --duree_lissage 10 \
     --num_classes 4 \
     --n_background 100 \
-    --n_test 300
+    --n_test 5000 \
+    --method "gradient" \
+    --bg_type "zeros" \
+    --generate_beeswarms \
+    --beeswarm_stride 30 \
+    --nb_members_val 1 \
+    --seed 1 \
+
 
 
 # 5. NETTOYAGE INDISPENSABLE

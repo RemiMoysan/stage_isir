@@ -4,10 +4,86 @@ import torch.nn.functional as F
 import math
 import numpy as np
 
-# A termes il faudrait tous les rendres lag flexibles, et avoir juste l'encoder (token cls taille 128) et le transformer encoder decoder 
 
-# Remarque : à l'heure actuelle, pas de self attention entre les différents lags, car on mélange tout avant 
-# Alors que pour slp et sst, on concatène dans la liste de patch : clairement de la self-attention (mais est ce que c'est plus logique que de faire de la cross attention), cela veut dire que première compo patch slp a la même info que première compo patch sst. 
+def spatial_penalty_tikhonov(weights, in_chans, h, w):
+    """Pénalise la différence entre les pixels voisins (Lissage 1er ordre). Attention pas circulaire, donc les bords sont moins pénalisés."""
+    if weights.numel() == 0: return 0.0
+    w_spatial = weights.view(-1, in_chans, h, w)
+    
+    # Différences finies verticales et horizontales
+    diff_h = torch.sum((w_spatial[:, :, 1:, :] - w_spatial[:, :, :-1, :]) ** 2)
+    diff_w = torch.sum((w_spatial[:, :, :, 1:] - w_spatial[:, :, :, :-1]) ** 2)
+    return diff_h + diff_w
+
+def spatial_penalty_laplacian(weights, in_chans, h, w):
+    """Pénalise la courbure (Lissage 2ème ordre, préserve mieux les pics). Attention pas circulaire, donc les bords sont moins pénalisés."""
+    if weights.numel() == 0: return 0.0
+    w_spatial = weights.view(-1, in_chans, h, w)
+    
+    # Opérateur Laplacien (pixels haut, bas, gauche, droite - 4 * centre)
+    laplacian = (
+        w_spatial[:, :, 2:, 1:-1] + w_spatial[:, :, :-2, 1:-1] + 
+        w_spatial[:, :, 1:-1, 2:] + w_spatial[:, :, 1:-1, :-2] - 
+        4 * w_spatial[:, :, 1:-1, 1:-1]
+    )
+    return torch.sum(laplacian ** 2)
+
+
+def compute_loss(preds, target, loss_type, quantiles=None, reduction='mean'):
+    """
+    Calcule la loss (MSE, L1 ou Quantile).
+    Si reduction='none', retourne la loss par échantillon (batch_size,).
+    """
+    if loss_type == 'mse':
+        mse = F.mse_loss(preds, target, reduction='none')
+        if reduction == 'mean': return mse.mean()
+        return mse.mean(dim=1)
+        
+    elif loss_type == 'l1':
+        l1 = F.l1_loss(preds, target, reduction='none')
+        if reduction == 'mean': return l1.mean()
+        return l1.mean(dim=1)
+        
+    elif loss_type == 'quantile':
+        # preds: (bs, latent_dim * n_quantiles)
+        # target: (bs, latent_dim)
+        bs, _ = target.shape
+        n_q = len(quantiles)
+        
+        # Reshape preds -> (bs, latent_dim, n_quantiles)
+        preds_reshaped = preds.view(bs, -1, n_q)
+        # Reshape target -> (bs, latent_dim, 1) pour le broadcast
+        target_expanded = target.unsqueeze(-1)
+        
+        # Tenseur des quantiles -> (1, 1, n_quantiles)
+        q_tensor = torch.tensor(quantiles, dtype=torch.float32, device=preds.device).view(1, 1, n_q)
+        
+        errors = target_expanded - preds_reshaped
+        # Pinball loss : max(q * e, (q - 1) * e)
+        loss = torch.max(q_tensor * errors, (q_tensor - 1) * errors)
+        
+        if reduction == 'mean': 
+            return loss.mean()
+        # Moyenne sur la dimension latente et les quantiles pour avoir une loss par sample
+        return loss.mean(dim=(1, 2)) 
+    
+    elif loss_type == 'correlation':
+         corr_val = correlation_loss(preds, target)
+         if reduction == 'mean':
+             return corr_val
+         else:
+             # Broadcast manuel : crée un vecteur de taille batch_size rempli de la valeur globale
+             return torch.full((preds.shape[0],), corr_val, device=preds.device)
+
+def get_median_prediction(preds, loss_type, quantiles, latent_dim):
+    """Extrait la prédiction médiane (q=0.5) pour la reconstruction et l'évaluation visuelle."""
+    if loss_type != 'quantile':
+        return preds
+        
+    median_idx = quantiles.index(0.5)
+    bs = preds.size(0)
+    preds_reshaped = preds.view(bs, latent_dim, len(quantiles))
+    return preds_reshaped[:, :, median_idx]
 
 # ============================================================
 # La loss custom de Clara pour la PC1, à comparer avec une MSE classique
@@ -608,6 +684,172 @@ class ViT_Latent_SLP_Multimodal(nn.Module):
         
         return output
     
+class ViT_Latent_SLP_Multimodal_tunable(nn.Module):
+    def __init__(self, 
+                 # -- Dimensions et Inputs --
+                 sst_size=(85, 360), patch_size_sst=(5, 10), in_chans_sst=3,
+                 slp_size=(53, 113), patch_size_slp=(5, 5), in_chans_slp=2,
+                 nb_out=10, 
+                 # -- Hyperparamètres du Transformer --
+                 embed_dim=128, depth=4, num_heads=4, 
+                 mlp_ratio=4.0,              # <-- NOUVEAU: Multiplicateur du FeedForward
+                 transformer_act="gelu",     # <-- NOUVEAU: Activation interne au Transformer
+                 dr=0.1, 
+                 # -- Stratégies architecturales --
+                 use_lags_attention=False,
+                 pool_strategy='cls',        # <-- NOUVEAU: 'cls' (Class Token) ou 'gap' (Global Average Pooling)
+                 head_hidden_dim=None,       # <-- NOUVEAU: Flexibilité sur la taille de la couche cachée finale
+                 head_act='tanh',# <-- NOUVEAU: Activation de la tête: tanh ou relu (si pas tanh)
+                 norm_first=False):  # historiquement on mettait false mais recherche actuel suggère que true est mieux...    
+        super().__init__()
+
+        assert embed_dim % num_heads == 0, f"embed_dim ({embed_dim}) doit être divisible par num_heads ({num_heads})"
+        self.use_sst_in = in_chans_sst > 0
+        self.use_slp_in = in_chans_slp > 0
+        self.use_lags_attention = use_lags_attention
+        self.pool_strategy = pool_strategy
+
+        if not self.use_sst_in and not self.use_slp_in:
+            raise ValueError("Le modèle doit recevoir au moins une source de données (SST ou SLP).")
+
+        # 1. Création des extracteurs de patches
+        if self.use_sst_in:
+            c_in_sst = 1 if use_lags_attention else in_chans_sst
+            # On suppose que PatchEmbedding est défini ailleurs dans ton code
+            self.sst_embed = PatchEmbedding(sst_size, patch_size_sst, c_in_sst, embed_dim)
+            self.sst_pos_embed = nn.Parameter(torch.zeros(1, self.sst_embed.num_patches, embed_dim))
+            
+            if use_lags_attention:
+                self.sst_time_embed = nn.Parameter(torch.zeros(1, in_chans_sst, 1, embed_dim))
+                
+        if self.use_slp_in:
+            c_in_slp = 1 if use_lags_attention else in_chans_slp
+            self.slp_in_embed = PatchEmbedding(slp_size, patch_size_slp, c_in_slp, embed_dim)
+            self.slp_in_pos_embed = nn.Parameter(torch.zeros(1, self.slp_in_embed.num_patches, embed_dim))
+            
+            if use_lags_attention:
+                self.slp_time_embed = nn.Parameter(torch.zeros(1, in_chans_slp, 1, embed_dim))
+
+        # 2. Le "Class Token" (uniquement si pool_strategy == 'cls')
+        if self.pool_strategy == 'cls':
+            self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        
+        self.pos_drop = nn.Dropout(p=dr)
+
+        # 3. L'encodeur Transformer commun
+        dim_feedforward = int(embed_dim * mlp_ratio) # Rendu dynamique via mlp_ratio
+        
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=embed_dim, 
+            nhead=num_heads, 
+            dropout=dr, 
+            dim_feedforward=dim_feedforward, 
+            activation=transformer_act, 
+            batch_first=True,
+            norm_first=norm_first
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=depth)
+
+        # 4. Tête de régression paramétrable
+        self.norm = nn.LayerNorm(embed_dim)
+        
+        h_dim = head_hidden_dim if head_hidden_dim is not None else embed_dim
+        final_act = nn.Tanh() if head_act == 'tanh' else nn.ReLU()
+        
+        self.head = nn.Sequential(
+            nn.Linear(embed_dim, h_dim), 
+            final_act,
+            nn.Dropout(p=dr), # Optionnel, souvent utile avant la prédiction finale
+            nn.Linear(h_dim, nb_out)
+        )
+
+        # 5. Initialisation des poids
+        if self.use_sst_in:
+            nn.init.trunc_normal_(self.sst_pos_embed, std=0.02)
+            if use_lags_attention:
+                nn.init.trunc_normal_(self.sst_time_embed, std=0.02)
+        if self.use_slp_in:
+            nn.init.trunc_normal_(self.slp_in_pos_embed, std=0.02)
+            if use_lags_attention:
+                nn.init.trunc_normal_(self.slp_time_embed, std=0.02)
+                
+        if self.pool_strategy == 'cls':
+            nn.init.trunc_normal_(self.cls_token, std=0.02)
+            
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.trunc_normal_(m.weight, std=0.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+
+    def forward(self, x_sst=None, x_slp=None):
+        B = x_sst.shape[0] if self.use_sst_in else x_slp.shape[0]
+        
+        # --- ROUTE A : ATTENTION SPATIO-TEMPORELLE (ViViT) ---
+        if self.use_lags_attention:
+            if self.use_sst_in:
+                _, T_sst, H_sst, W_sst = x_sst.shape
+                x_sst_re = x_sst.reshape(B * T_sst, 1, H_sst, W_sst)
+                tokens_sst = self.sst_embed(x_sst_re) 
+                tokens_sst = tokens_sst.reshape(B, T_sst, -1, tokens_sst.shape[-1])
+                tokens_sst = tokens_sst + self.sst_pos_embed.unsqueeze(1) + self.sst_time_embed
+                tokens_sst = tokens_sst.reshape(B, -1, tokens_sst.shape[-1])
+
+            if self.use_slp_in:
+                _, T_slp, H_slp, W_slp = x_slp.shape
+                x_slp_re = x_slp.reshape(B * T_slp, 1, H_slp, W_slp)
+                tokens_slp = self.slp_in_embed(x_slp_re)
+                tokens_slp = tokens_slp.reshape(B, T_slp, -1, tokens_slp.shape[-1])
+                tokens_slp = tokens_slp + self.slp_in_pos_embed.unsqueeze(1) + self.slp_time_embed
+                tokens_slp = tokens_slp.reshape(B, -1, tokens_slp.shape[-1])
+                
+        # --- ROUTE B : ARCHITECTURE CLASSIQUE (EARLY FUSION) ---
+        else:
+            if self.use_sst_in:
+                tokens_sst = self.sst_embed(x_sst) + self.sst_pos_embed
+            if self.use_slp_in:
+                tokens_slp = self.slp_in_embed(x_slp) + self.slp_in_pos_embed
+
+        # --- FUSION FINALE DES MODALITÉS ---
+        if self.use_sst_in and self.use_slp_in:
+            tokens = torch.cat((tokens_sst, tokens_slp), dim=1)
+        elif self.use_sst_in:
+            tokens = tokens_sst
+        elif self.use_slp_in:
+            tokens = tokens_slp
+
+        # --- AJOUT CONDITIONNEL DU CLS TOKEN ---
+        if self.pool_strategy == 'cls':
+            cls_tokens = self.cls_token.expand(B, -1, -1)
+            x = torch.cat((cls_tokens, tokens), dim=1)
+        else:
+            x = tokens # Si 'gap', on ne rajoute pas de token artificiel
+
+        x = self.pos_drop(x)
+        
+        # --- PASSAGE DANS LE TRANSFORMER ---
+        x = self.transformer(x)
+        
+        # --- EXTRACTION DU RÉSUMÉ (READOUT) ---
+        if self.pool_strategy == 'cls':
+            # On prend la représentation du CLS token (position 0)
+            representation = x[:, 0]
+        else: # 'gap'
+            # On moyenne tous les patchs
+            representation = x.mean(dim=1) 
+            
+        cls_out = self.norm(representation)
+        
+        # --- RÉGRESSION FINALE ---
+        output = self.head(cls_out)
+        
+        return output
+    
 # ============================================================
 # La version classification du ViT multimodal, pour comparer avec les modèles de classification plus classiques.
     
@@ -675,7 +917,7 @@ class ViT_Classifier_Multimodal(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def forward(self, x_sst, x_slp):
+    def forward(self, x_sst = None, x_slp = None):
         B = x_sst.shape[0] if self.use_sst_in else x_slp.shape[0]
         
         if self.use_lags_attention:
@@ -845,3 +1087,22 @@ def old_get_fast_labels(slp_batch, ref_dict, metric='correlation'):
         
     # Retourne un tenseur PyTorch formaté pour la CrossEntropy
     return torch.tensor(labels, dtype=torch.long)
+
+def pearson_correlation(y_pred, y_true, dim=0):
+    """Calcule le coefficient de Pearson sur une dimension donnée (par défaut le batch)."""
+    # Centrage
+    y_pred_centered = y_pred - y_pred.mean(dim=dim, keepdim=True)
+    y_true_centered = y_true - y_true.mean(dim=dim, keepdim=True)
+    
+    # Covariance et écarts-types
+    cov = (y_pred_centered * y_true_centered).sum(dim=dim)
+    std_pred = torch.sqrt((y_pred_centered ** 2).sum(dim=dim) + 1e-8)
+    std_true = torch.sqrt((y_true_centered ** 2).sum(dim=dim) + 1e-8)
+    
+    corr = cov / (std_pred * std_true)
+    return corr
+
+def correlation_loss(y_pred, y_true):
+    """Loss de corrélation (1 - corrélation moyenne). En particulier marche même si on est pas dans le cas 1D."""
+    corr = pearson_correlation(y_pred, y_true, dim=0)
+    return 1.0 - corr.mean()

@@ -24,14 +24,17 @@ export PYTHONUSERBASE=$WORK/.local_vit_v100
 # (À adapter avec le nom exact du dossier où se trouve ton script python)
 cd $WORK/stage_isir_jz/data_analysis/
 
-
+# --lat_weight
+# --monthly_reduction \
 
 # 5. Exécution du code
 # --normalize \ à ajouter pour le nom du fichier si on utilise des PC normalisés
 srun python composites_4_regimes.py \
     --machine jean-zay-work \
     --embedding_method pca \
-    --model_path /lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent128_NDJF_87members_normalizeFalse_duree_lissage10/best_pca_model.joblib \
-    --duree_lissage 10 \
+    --model_path /lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/0d/IPCA_latent128_winter_months_11_87members_normalizeTrue_duree_lissage0_wgtFalse_slp_std983.13/best_pca_model.joblib \
+    --duree_lissage 0 \
     --latent_dim 128 \
-    --number_of_members 89
+    --number_of_members 89 \
+    --normalize \
+    --winter_months 2 \

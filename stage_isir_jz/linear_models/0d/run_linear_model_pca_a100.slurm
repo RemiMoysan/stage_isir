@@ -1,25 +1,27 @@
 #!/bin/bash
-#SBATCH --job-name=CNN_test_1mb      # Nom du job
-#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_with_slp_embedding/log/cnn_output_%j.out   # Fichier de sortie standard (%j = ID du job)
-#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_with_slp_embedding/log/cnn_error_%j.err     # Fichier d'erreur
-#SBATCH --partition=gpu_p2l           # <-- NOUVEAU : Partition avec les V100 32 Go
-#SBATCH --time=02:00:00              # Temps alloué
+#SBATCH --job-name=Linear      # Nom du job
+#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/linear_models/log/linear_output_%j.out   # Fichier de sortie standard (%j = ID du job)
+#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/linear_models/log/linear_error_%j.err     # Fichier d'erreur
+#SBATCH --time=20:00:00              # Temps alloué
 #SBATCH --nodes=1                    # 1 seul noeud
 #SBATCH --ntasks=1                   # 1 seule tâche PyTorch
-#SBATCH --gres=gpu:1                 # 1 seul GPU V100 (32 Go)
-#SBATCH --cpus-per-task=3            # <-- CRUCIAL : Le maximum autorisé par GPU sur gpu_p2 !
+#SBATCH --gres=gpu:1                 # 1 seul GPU A100 : 80 Go
+#SBATCH --cpus-per-task=8            # <-- CRUCIAL : Le maximum autorisé par GPU sur A100
 #SBATCH --hint=nomultithread         # Désactive l'hyperthreading
-#SBATCH --account=uxg@v100           # Ton projet
+#SBATCH --account=uxg@a100           # Ton projet
+#SBATCH --partition=gpu_p5           # <-- AJOUT : On tape dans la partition A100
+#SBATCH -C a100   
 
 # 1. Nettoyage de l'environnement
 module purge
 
 # 2. Chargement de l'environnement PyTorch officiel de Jean Zay
+module load arch/a100
 module load pytorch-gpu/py3/2.0.0
-export PYTHONUSERBASE=$WORK/.local_vit_v100 
+export PYTHONUSERBASE=$WORK/.local_vit_a100 
 
 # 3. Déplacement dans ton répertoire de travail
-cd $WORK/stage_isir_jz/cnn/cnn_with_slp_embedding/
+cd $WORK/stage_isir_jz/linear_models/
 
 # --- DÉBUT DES AJOUTS POUR LE MONITORING ---
 
@@ -47,7 +49,25 @@ PID_CPU=$!
 
 
 # 4. Lancement de ton script Python
-srun python main.py --update 0 --machine jean-zay-scratch --embed_method pca
+srun python train_linear_model.py \
+    --update 0 \
+    --machine jean-zay-work \
+    --embed_method pca \
+    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/0d/IPCA_latent128_winter_months_2_87members_normalizeTrue_duree_lissage0_wgtFalse_slp_std1121.01/best_pca_model.joblib" \
+    --seed 42 \
+    --nb_members_train 80 \
+    --nb_members_val 1 \
+    --latent_dim 1 \
+    --sst_lags_days 0 \
+    --slp_lags_days \
+    --winter_months 2 \
+    --bs 128 \
+    --lr 5e-5 \
+    --nb_epochs 15 \
+    --duree_lissage 0 \
+    --normalize \
+    --alpha_penalty 0.0 \
+    --penalty_type l2
 
 
 # 5. NETTOYAGE INDISPENSABLE

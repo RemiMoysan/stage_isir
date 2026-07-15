@@ -56,13 +56,13 @@ srun python main.py \
     --seed 1 \
     --nb_members_train 50 \
     --nb_members_val 3 \
-    --sst_lags_days "15" \
+    --sst_lags_days 30 60 \
     --slp_lags_days \
     --winter_months 1 2 \
     --bs 32 \
     --lr 5e-5 \
     --dr 0.4 \
-    --nb_epochs 25 \
+    --nb_epochs 5 \
     --duree_lissage 10 \
     --metric mse \
     --use_lags_attention \

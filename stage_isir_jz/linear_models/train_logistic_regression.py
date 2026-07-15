@@ -436,6 +436,7 @@ if __name__ == "__main__":
             best_val_loss = val_loss
             best_model_state = copy.deepcopy(model.state_dict())
             patience_counter = 0
+            torch.save(model.state_dict(), f'{outdir}/best_val_LogReg_bs{bs}.pth')
             print(f"Saved best val model at epoch {epoch + 1}")
             
             # Optionnel : Sauvegarder la matrice de confusion du meilleur modèle en direct

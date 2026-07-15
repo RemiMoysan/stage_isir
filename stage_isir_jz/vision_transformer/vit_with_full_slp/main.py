@@ -60,14 +60,14 @@ if __name__ == "__main__":
 
     winter_months = [1, 2]   
     months_label = "JF"      
-    sst_lags_days = []   
-    slp_lags_days = [7]  
+    sst_lags_days = [3]   
+    slp_lags_days = []  
     bs = 128       # ATTENTION: Réduit à 128 (au lieu de 1024) pour éviter le Out Of Memory (OOM) avec des images 53x113 en sortie !
     lr = 5e-5       # Learning rate
     dr = 0.2        # Dropout rate
     nb_epochs = 25           
     patience = 10000
-    duree_lissage = 30              
+    duree_lissage = 0              
 
     outdir_name = f"ViT_EncDec_lags_{'_'.join(map(str, sst_lags_days))}_sst_{'_'.join(map(str, slp_lags_days))}_slp_bs{bs}_lr{lr}_dr{dr}_{months_label}_train{nb_members_train}members_duree_lissage{duree_lissage}"
     outdir = os.path.join(base_home, outdir_name)

@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=train_vae      # Nom du job
 #SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/vae_%j.out   # Fichier de sortie standard (%j = ID du job)
-#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/error_vae_%j.out    # Fichier d'erreur
-#SBATCH --time=10:00:00              # Temps alloué
+#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/vae_%j.out    # Fichier d'erreur
+#SBATCH --time=0:40:00              # Temps alloué
 #SBATCH --nodes=1                    # 1 seul noeud
 #SBATCH --ntasks=1                   # 1 seule tâche PyTorch
 #SBATCH --gres=gpu:1                 # 1 seul GPU A100 : 80 Go
@@ -11,6 +11,7 @@
 #SBATCH --account=uxg@a100           # Ton projet
 #SBATCH --partition=gpu_p5           # <-- AJOUT : On tape dans la partition A100
 #SBATCH -C a100                      # <-- AJOUT : On force la carte A100
+#SBATCH --qos=qos_gpu_a100-dev
 
 # 1. Nettoyage de l'environnement
 module purge
@@ -46,7 +47,8 @@ done) &
 PID_CPU=$!
 
 # --- FIN DES AJOUTS POUR LE MONITORING ---
-
+# --lat_weight
+# --monthly_reduction
 
 # 4. Lancement de ton script Python
 srun python vae_on_slp.py \
@@ -56,8 +58,11 @@ srun python vae_on_slp.py \
     --beta_kld 50.0 \
     --nb_members_train 80 \
     --nb_epochs 50 \
-    --latent_dim 1 \
-    --duree_lissage 10 \
+    --latent_dim 5 \
+    --duree_lissage 0 \
+    --winter_months 11 12 1 2 \
+
+
 
 
 # 5. NETTOYAGE INDISPENSABLE

@@ -67,6 +67,9 @@ if __name__ == "__main__":
     parser.add_argument('--master_ref_path', type=str, default="/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/composites_4_regimes/master_ref_generator_89_members_10d_embedding_method_pca/master_reference_global.npz", help='Chemin vers la référence maître')
     parser.add_argument('--projector_path', type=str, default="", help='Chemin vers le projector à utiliser pour calculer les embeddings de référence (optionnel)')
     
+    parser.add_argument('--roll_sst', action='store_true', help='Appliquer un roll sur les données SST pour centrer l\'océan Atlantique')
+    parser.add_argument('--early_fusion_sst', action='store_true', help='Fusionner les lags SST dès les premières couches du CNN (au lieu de fusion tardive)')
+    parser.add_argument('--nb_intra_evals', type=int, default=15, help='Nombre de points de validation intra-époque (espacement logarithmique epoch 1, linéaire epoch 2)')
     args = parser.parse_args()
 
     # Routage dynamique du dossier de sortie (Output Dir)
@@ -83,25 +86,6 @@ if __name__ == "__main__":
     # ============================================================
     # GLOBAL CONSTANTS
     # ============================================================
-
-
-    # train_members_87 = ['1041.003', '1061.004', '1081.005', '1101.006', '1121.007', '1141.008', '1161.009', '1181.010', '1231.001', '1231.002', '1231.003', '1231.004', '1231.005', '1231.006', '1231.007', '1231.008', '1231.009', '1231.010', '1231.011', '1231.012', '1231.013', '1231.014', '1231.015', '1231.016', '1231.017', '1231.018', '1231.019', '1231.020', '1251.001', '1251.002', '1251.003', '1251.004', '1251.005', '1251.006', '1251.007', '1251.008', '1251.009', '1251.010', '1251.011', '1251.012', '1251.013', '1251.014', '1251.015', '1251.016', '1251.017', '1251.018', '1251.019', '1251.020', '1281.001', '1281.002', '1281.003', '1281.004', '1281.005', '1281.006', '1281.007', '1281.008', '1281.009', '1281.010', '1281.011', '1281.012', '1281.013', '1281.014', '1281.015', '1281.016', '1281.017', '1281.018', '1281.019', '1281.020', '1301.001', '1301.002', '1301.003', '1301.004', '1301.005', '1301.006', '1301.007', '1301.008', '1301.009', '1301.010', '1301.011', '1301.012', '1301.013', '1301.014', '1301.015', '1301.016', '1301.017', '1301.018', '1301.019', '1301.020']
-    # nb_members_train = 1
-    # train_members = train_members_87[:nb_members_train]
-    # print(f"{nb_members_train} members used for training")
-
-    # val_members = ['1001.001'] # On peut aussi prendre ["1301.010"] ou les deux (attention à la ram)
-
-    # winter_months = [1,2]   
-    # months_label = "JF"      
-    # sst_lags_days = [35,65,95]   
-    # slp_lags_days = []  
-    # bs = 128       # ATTENTION: Réduit à 128 (au lieu de 1024) pour éviter le Out Of Memory (OOM) avec des images 53x113 en sortie !
-    # lr = 5e-5       # Learning rate
-    # dr = 0.2        # Dropout rate
-    # nb_epochs = 1               
-    # duree_lissage = 30   
-
 
     sst_lags_days = args.sst_lags_days
     slp_lags_days = args.slp_lags_days
@@ -126,7 +110,7 @@ if __name__ == "__main__":
     train_members = all_members[:nb_members_train]
     val_members = all_members[-nb_members_val:]
 
-    outdir_name = f"CNN_classifier_lags_{'_'.join(map(str, sst_lags_days))}_sst_{'_'.join(map(str, slp_lags_days))}_slp_bs{bs}_lr{lr}_dr{dr}_months_{'_'.join(map(str, winter_months))}_train{nb_members_train}_val_{nb_members_val}_members_seed_{args.seed}_{duree_lissage}d_metric_{metric}"
+    outdir_name = f"CNN_classifier_early_fusion_sst_{args.early_fusion_sst}_lags_{'_'.join(map(str, sst_lags_days))}_sst_{'_'.join(map(str, slp_lags_days))}_slp_bs{bs}_lr{lr}_dr{dr}_months_{'_'.join(map(str, winter_months))}_train{nb_members_train}_val_{nb_members_val}_members_seed_{args.seed}_{duree_lissage}d_metric_{metric}_roll_sst_{args.roll_sst}"
     outdir = os.path.join(base_home, outdir_name)
     os.makedirs(outdir, exist_ok=True)
     print(f"Dossier de sauvegarde : {outdir}")
@@ -177,10 +161,14 @@ if __name__ == "__main__":
     n_workers = max(0, n_workers - 1)
     print(f"Using {n_workers} workers for data loading")
 
-    val_set = Dataset(members=val_members, selected_months=winter_months, machine = args.machine,target_type ='map',sst_lags_days=sst_lags_days, slp_lags_days=slp_lags_days, duree_lissage=duree_lissage)
+    val_set = Dataset(members=val_members, selected_months=winter_months, machine = args.machine,target_type ='map',sst_lags_days=sst_lags_days, slp_lags_days=slp_lags_days, duree_lissage=duree_lissage, roll_sst=args.roll_sst)
     valloader = torch.utils.data.DataLoader(val_set, batch_size=bs, shuffle=False, num_workers=n_workers, pin_memory=True)
 
-    training_set = Dataset(members=train_members, selected_months=winter_months, machine = args.machine,target_type ='map',sst_lags_days=sst_lags_days, slp_lags_days=slp_lags_days, duree_lissage=duree_lissage)
+    # 2. NOUVEAU : Dataloader allégé pour la validation intra-époque
+    intra_workers = min(2, n_workers)
+    valloader_intra = torch.utils.data.DataLoader(val_set, batch_size=bs, shuffle=False, num_workers=intra_workers, pin_memory=True)
+
+    training_set = Dataset(members=train_members, selected_months=winter_months, machine = args.machine,target_type ='map',sst_lags_days=sst_lags_days, slp_lags_days=slp_lags_days, duree_lissage=duree_lissage, roll_sst=args.roll_sst)
     trainloader = torch.utils.data.DataLoader(training_set, batch_size=bs, shuffle=True, num_workers=n_workers, pin_memory=True)
 
     # ============================================================
@@ -192,7 +180,8 @@ if __name__ == "__main__":
         in_chans_sst=len(sst_lags_days),  
         in_chans_slp=len(slp_lags_days),
         n_feat = 8,         # la même pour la slp et pour la sst          
-        dr=dr                  
+        dr=dr, 
+        early_fusion_sst=args.early_fusion_sst                  
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -205,6 +194,8 @@ if __name__ == "__main__":
         _ = model(dummy_sst, dummy_slp)
 
     print("Number of model parameters : ", sum(p.numel() for p in model.parameters()))
+
+    best_model_path = "" # Initialisation sécurisée
 
     # plus robuste que les autres codes je crois dans le cas update == 1
     if args.update == 1: 
@@ -231,6 +222,24 @@ if __name__ == "__main__":
         print("Initiate first CNN training")
 
     # ============================================================
+    # CALCUL DES STEPS DE VALIDATION INTRA-ÉPOQUE
+    # ============================================================
+    nb_intra_evals = args.nb_intra_evals
+    total_batches = len(trainloader)
+    
+    # geomspace pour epoch 1 (espacement exponentiel)
+    eval_steps = np.geomspace(1, total_batches - 1, num=nb_intra_evals, dtype=int)
+    eval_steps = np.insert(eval_steps, 0, 0)
+    eval_steps_set = set(eval_steps)
+    
+    # linspace pour epoch 2 (espacement linéaire)
+    eval_steps_epoch2 = np.linspace(0, total_batches - 1, num=nb_intra_evals, dtype=int)
+    eval_steps_epoch2 = np.insert(eval_steps_epoch2, 0, 0)
+    eval_steps_epoch2_set = set(eval_steps_epoch2)
+
+    print(f"Validation intra-époque aux steps : {sorted(list(eval_steps_set))}")
+
+    # ============================================================
     # TRAINING & EVALUATION LOOP
     # ============================================================
     start_time = time.time() 
@@ -242,6 +251,16 @@ if __name__ == "__main__":
     epoch1_baseline_losses = []
     epoch1_batch_accs = []
     epoch1_baseline_accs = []
+
+    # Variables pour le suivi intra-époque 1
+    intra_epoch1_steps = []
+    intra_epoch1_val_losses = []
+    intra_epoch1_val_accs = []
+
+    # Variables pour le suivi intra-époque 2
+    intra_epoch2_steps = []
+    intra_epoch2_val_losses = []
+    intra_epoch2_val_accs = []
 
     for epoch in range(nb_epochs):
         # ---------------- TRAINING ----------------
@@ -293,6 +312,62 @@ if __name__ == "__main__":
                     b_preds = torch.full_like(labels, majority_class)
                     b_acc = (b_preds == labels).sum().item() / current_batch_size * 100.0
                     epoch1_baseline_accs.append(b_acc)
+
+            # ----- NOUVEAU : Validation intra-époque -----
+            if args.nb_intra_evals > 0 and (epoch == 0 or epoch == 1):
+                current_eval_steps_set = eval_steps_set if epoch == 0 else eval_steps_epoch2_set
+                if batch_idx in current_eval_steps_set or batch_idx == len(trainloader) - 1:
+                    print(f"\n--- Intra-epoch validation at step {batch_idx}/{len(trainloader)} ---")
+                    
+                    model.eval()
+                    intra_val_loss = 0.0
+                    intra_correct = 0
+                    intra_n_samples = 0
+                    
+                    with torch.no_grad():
+                        for v_batch_idx, (v_X_sst, v_X_slp, v_y_target, _, _, _) in enumerate(valloader_intra):
+                            v_X_sst = v_X_sst.to(device, non_blocking=True)
+                            v_X_slp = v_X_slp.to(device, non_blocking=True)
+                            
+                            v_labels = get_fast_labels(v_y_target.numpy(), master_ref, metric=metric, projector=projector)
+                            v_labels = v_labels.to(device)
+                            
+                            v_logits = model(v_X_sst, v_X_slp)
+                            loss_val = criterion(v_logits, v_labels)
+                            
+                            v_preds = torch.argmax(v_logits, dim=1)
+                            
+                            batch_size_val = v_X_sst.size(0)
+                            intra_val_loss += loss_val.item() * batch_size_val
+                            intra_correct += (v_preds == v_labels).sum().item()
+                            intra_n_samples += batch_size_val
+
+                    current_intra_loss = intra_val_loss / intra_n_samples
+                    current_intra_acc = (intra_correct / intra_n_samples) * 100.0
+                    
+                    if epoch == 0:
+                        intra_epoch1_steps.append(batch_idx)
+                        intra_epoch1_val_losses.append(current_intra_loss)
+                        intra_epoch1_val_accs.append(current_intra_acc)
+                    elif epoch == 1:
+                        intra_epoch2_steps.append(batch_idx)
+                        intra_epoch2_val_losses.append(current_intra_loss)
+                        intra_epoch2_val_accs.append(current_intra_acc)
+                    
+                    print(f"-> Intra-Val Loss: {current_intra_loss:.4f} | Intra-Val Acc: {current_intra_acc:.2f}%")
+                    
+                    if current_intra_loss < best_val_loss:
+                        best_val_loss = current_intra_loss
+                        best_model_state = copy.deepcopy(model.state_dict())
+                        
+                        if best_model_path and os.path.exists(best_model_path):
+                            os.remove(best_model_path)
+                            
+                        best_model_path = os.path.join(outdir, f'best_val_CNN_bs{bs}_ep{epoch + 1}_step{batch_idx}_loss{best_val_loss:.4f}.pth')
+                        torch.save(model.state_dict(), best_model_path)
+                        print(f"   *** Nouveau Best Model (Intra) sauvegardé : {os.path.basename(best_model_path)} ***")
+                    
+                    model.train()
             # ----------------------------------------------------------------------------------
 
         train_loss = running_train_loss / total_train_samples
@@ -302,10 +377,21 @@ if __name__ == "__main__":
 
         print(f'Epoch {epoch + 1} Training Loss: {train_loss:.8f}, Training Accuracy: {train_acc:.2f}%')
 
-        # ----- NOUVEAU : Appel de la fonction de visualisation -----
-        if epoch == 0:
-            loss_acc_first_epoch(epoch1_batch_losses, epoch1_baseline_losses, 
-                                 epoch1_batch_accs, epoch1_baseline_accs, outdir)
+        # ----- NOUVEAU : Appel de la fonction de visualisation avec routage dynamique -----
+        if epoch == 0 or epoch == 1:
+            if epoch == 0:
+                loss_acc_first_epoch(epoch1_batch_losses, epoch1_baseline_losses, 
+                                     epoch1_batch_accs, epoch1_baseline_accs, 
+                                     outdir, label="Train")
+            
+            if args.nb_intra_evals > 0:
+                current_intra_losses = intra_epoch1_val_losses if epoch == 0 else intra_epoch2_val_losses
+                current_intra_accs = intra_epoch1_val_accs if epoch == 0 else intra_epoch2_val_accs
+                current_intra_steps = intra_epoch1_steps if epoch == 0 else intra_epoch2_steps
+                
+                loss_acc_first_epoch(current_intra_losses, [np.mean(epoch1_baseline_losses)] * len(current_intra_losses),
+                                     current_intra_accs, [np.mean(epoch1_baseline_accs)] * len(current_intra_accs),
+                                     outdir, label="Intra-Val", batch_indexes=current_intra_steps, epoch_num=epoch+1)
         # -----------------------------------------------------------
 
     # ---------------- VALIDATION ----------------
@@ -382,7 +468,13 @@ if __name__ == "__main__":
             best_val_loss = val_loss
             best_model_state = copy.deepcopy(model.state_dict())
             patience_counter = 0
-            print(f"Saved best val model at epoch {epoch + 1}")
+
+            if best_model_path and os.path.exists(best_model_path):
+                os.remove(best_model_path)
+                
+            best_model_path = os.path.join(outdir, f'best_val_CNN_bs{bs}_ep{epoch + 1}_end_loss{best_val_loss:.4f}.pth')
+            torch.save(model.state_dict(), best_model_path)
+            print(f"   *** Nouveau Best Model (Fin d'époque) sauvegardé : {os.path.basename(best_model_path)} ***")
             
             # Optionnel : Sauvegarder la matrice de confusion du meilleur modèle en direct
             plot_confusion_matrix(all_val_labels, all_val_preds, outdir, master_ref, filename='best_confusion_matrix.png')
@@ -391,7 +483,7 @@ if __name__ == "__main__":
             if patience_counter >= patience:
                 print(f"Early stopping at epoch {epoch + 1} (patience {patience} reached)")
                 break
-
+            
         if epoch % 1 == 0:
             state = {
                 'state_dict': model.state_dict(),

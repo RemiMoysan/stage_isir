@@ -69,3 +69,5 @@ venv/
 
 # Des sorties de modèles
 *model.txt 
+*.html
+*.db

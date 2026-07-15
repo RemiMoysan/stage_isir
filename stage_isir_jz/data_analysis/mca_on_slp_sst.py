@@ -7,31 +7,120 @@ import os
 import matplotlib.pyplot as plt
 from scipy.linalg import svd
 from datetime import timedelta
+from dateutil.relativedelta import relativedelta # <-- Indispensable pour les mois
 import joblib
+import cartopy.feature as cfeature
+import cartopy.crs as ccrs
 
-
+# éventuellement rechecker les normalisations successives
 
 # ============================================================
 # 1. FONCTIONS DE PRÉPARATION DE DONNÉES
 # ============================================================
 
-def load_member_mca_data(member, path_SST, path_SLP, selected_months, sst_lags_days=[35], duree_lissage=10, sst_std=0.707, slp_std=596.0):
+def compute_mca_stds(members, path_SST, path_SLP, selected_months, sst_lags, duree_lissage=10, roll_sst=False, monthly_reduction=False, lat_weight=False):
+    """
+    Calcule l'écart-type global de la SST et de la SLP de manière incrémentale.
+    """
+    print("Calcul dynamique de sst_std et slp_std rigoureux (Pass 1/2)...")
+    total_sum_sq_sst = 0.0
+    total_sum_sq_slp = 0.0
+    total_weights_sst = 0.0
+    total_weights_slp = 0.0
+    
+    map_weight_sum_sst = None
+    map_weight_sum_slp = None
+    
+    for member in members:
+        # On charge avec std=1.0 pour ne pas altérer les données brutes
+        X_sst, Y_slp, _, _, _, w_sst, w_slp = load_member_mca_data(
+            member, path_SST, path_SLP, selected_months, 
+            sst_lags=sst_lags, duree_lissage=duree_lissage, 
+            sst_std=1.0, slp_std=1.0, # <-- CRUCIAL
+            roll_sst=roll_sst, monthly_reduction=monthly_reduction, lat_weight=lat_weight
+        )
+        
+        # Initialisation de l'aire des cartes au premier passage
+        if lat_weight and map_weight_sum_sst is None and w_sst is not None:
+            map_weight_sum_sst = np.sum(w_sst**2)
+            map_weight_sum_slp = np.sum(w_slp**2)
+            
+        total_sum_sq_sst += np.sum(X_sst**2)
+        total_sum_sq_slp += np.sum(Y_slp**2)
+        
+        n_samples = X_sst.shape[0]
+        
+        if lat_weight:
+            total_weights_sst += n_samples * map_weight_sum_sst
+            total_weights_slp += n_samples * map_weight_sum_slp
+        else:
+            total_weights_sst += X_sst.size
+            total_weights_slp += Y_slp.size
+            
+    sst_std_rigoureux = np.sqrt(total_sum_sq_sst / total_weights_sst)
+    slp_std_rigoureux = np.sqrt(total_sum_sq_slp / total_weights_slp)
+    
+    print(f"--> sst_std calculé : {sst_std_rigoureux:.4f}")
+    print(f"--> slp_std calculé : {slp_std_rigoureux:.4f}")
+    
+    return sst_std_rigoureux, slp_std_rigoureux
+
+def load_member_mca_data(member, path_SST, path_SLP, selected_months, sst_lags=[35], duree_lissage=10, sst_std=0.707, slp_std=596.0,roll_sst=False,monthly_reduction=False,lat_weight=False):
     """
     Charge les paires (SST retardée, SLP actuelle) pour un membre.
     Les différents lags de SST sont concaténés comme des "features" supplémentaires.
     """
     # Chargement des datasets
-    ds_slp = xr.open_dataset(os.path.join(path_SLP, f'PSL_anom_LE2-{member}_{duree_lissage}d.nc'))["PSL"]
-    ds_sst = xr.open_dataset(os.path.join(path_SST, f'SST_anom_LE2-{member}_T_regrid.nc'))["SST"]
+    if not monthly_reduction:
+        if duree_lissage != 0:
+            ds_slp = xr.open_dataset(os.path.join(path_SLP, f'PSL_anom_LE2-{member}_{duree_lissage}d.nc'))["PSL"]
+        else:
+            ds_slp = xr.open_dataset(os.path.join(path_SLP, f'PSL_anom_LE2-{member}.nc'))["PSL"]
+        ds_sst = xr.open_dataset(os.path.join(path_SST, f'SST_anom_LE2-{member}_T_regrid.nc'))["SST"]
+    else:
+        ds_slp = xr.open_dataset(os.path.join(path_SLP, f'PSL_anom_LE2-{member}_1mo.nc'))["PSL"]
+        ds_sst = xr.open_dataset(os.path.join(path_SST, f'SST_anom_LE2-{member}_T_regrid_1mo.nc'))["SST"]
     
+    if roll_sst: #centre l'océan atlantique
+        ds_sst = ds_sst.assign_coords(lon=(((ds_sst.lon + 180) % 360) - 180)).sortby('lon')
+
     # 1. Identifier les dates cibles valides pour la SLP (mois d'hiver)
     slp_winter = ds_slp.sel(time=ds_slp['time'].dt.month.isin(selected_months))
     years = slp_winter['time'].dt.year
     
-    # Éviter les bornes extrêmes où les lags passés pourraient ne pas exister
+    # Éviter les bornes extrêmes où les lags passés / futurs pourraient ne pas exister
     valid_mask = (years > years.min()) & (years < years.max() - 1)
     target_dates = slp_winter.sel(time=valid_mask).time.values
     
+    # Récupération des dimensions spatiales 
+    ds_sst_cropped = ds_sst.sel(lat=slice(-15, 70))
+    shape_sst = ds_sst_cropped.shape[1:] # (lat, lon)
+    shape_slp = ds_slp.shape[1:]         # (lat, lon)
+    
+    # 3. GESTION DE LA PONDÉRATION SPATIALE (Sur les 2 variables)
+    wgts_sst_flat = None
+    wgts_slp_flat = None
+    wgts_sst_3d = None
+    wgts_slp_2d = None
+    
+    if lat_weight:
+        # Poids SLP
+        lats_slp = ds_slp['lat'].values
+        coslat_slp = np.cos(np.deg2rad(lats_slp)).clip(0., 1.)
+        wgts_slp_2d = np.sqrt(coslat_slp).reshape(shape_slp[0], 1)
+        wgts_slp_flat = np.broadcast_to(wgts_slp_2d, shape_slp).flatten()
+        
+        # Poids SST (Attention : dimension 3D avec les lags)
+        lats_sst = ds_sst_cropped['lat'].values
+        coslat_sst = np.cos(np.deg2rad(lats_sst)).clip(0., 1.)
+        wgts_sst_1d = np.sqrt(coslat_sst).reshape(shape_sst[0], 1)
+        # On prépare le tenseur pour le broadcasting (1, lat, 1) pour multiplier (lags, lat, lon)
+        wgts_sst_3d = wgts_sst_1d.reshape(1, shape_sst[0], 1)
+        
+        # Le tenseur flat final servira à dé-pondérer les EOFs : shape (lags * lat * lon)
+        wgts_sst_full = np.broadcast_to(wgts_sst_3d, (len(sst_lags), shape_sst[0], shape_sst[1]))
+        wgts_sst_flat = wgts_sst_full.flatten()
+
     # 2. Extraction vectorisée / itérative
     X_sst_list = []
     Y_slp_list = []
@@ -46,18 +135,30 @@ def load_member_mca_data(member, path_SST, path_SLP, selected_months, sst_lags_d
         else:
             t_obj = t_target # cftime object
             
-        dates_sst = [t_obj - timedelta(days=d) for d in sst_lags_days]
+        if not monthly_reduction:
+            dates_sst = [t_obj - timedelta(days=d) for d in sst_lags]
+        else:
+            # Pas viable avec No Leap dates_sst = [t_obj - relativedelta(months=d) for d in sst_lags]
+            dates_sst = []
+            for m in sst_lags:
+                y_shift = (t_obj.month - m - 1) // 12
+                new_month = (t_obj.month - m - 1) % 12 + 1
+                dates_sst.append(t_obj.replace(year=t_obj.year + y_shift, month=new_month))
         
         try:
             # Extraction SLP
             slp_t = ds_slp.sel(time=t_obj)
             
             # Extraction SST (on se restreint à la même zone que dans le Dataset PyTorch)
-            sst_lags = ds_sst.sel(time=dates_sst, lat=slice(-15, 70))
+            sst_lags_ds = ds_sst.sel(time=dates_sst, lat=slice(-15, 70))
             
             # Traitement NaNs et Normalisation
             slp_np = np.nan_to_num(slp_t.values, nan=0.0) / slp_std
-            sst_np = np.nan_to_num(sst_lags.values, nan=0.0) / sst_std
+            sst_np = np.nan_to_num(sst_lags_ds.values, nan=0.0) / sst_std
+
+            if lat_weight:
+                slp_np *= wgts_slp_2d
+                sst_np *= wgts_sst_3d
             
             # Aplatissement. Si plusieurs lags, on les met à plat avec l'espace (features = lags * lat * lon)
             Y_slp_list.append(slp_np.flatten())
@@ -70,31 +171,46 @@ def load_member_mca_data(member, path_SST, path_SLP, selected_months, sst_lags_d
             
     X_mat = np.array(X_sst_list) # Shape: (N, lags * lat_sst * lon_sst)
     Y_mat = np.array(Y_slp_list) # Shape: (N, lat_slp * lon_slp)
-    
-    # Récupération des dimensions spatiales pour la reconstruction future
-    shape_sst = ds_sst.sel(lat=slice(-15, 70)).shape[1:] # (lat, lon)
-    shape_slp = ds_slp.shape[1:]                         # (lat, lon)
-    
-    return X_mat, Y_mat, valid_target_dates, shape_sst, shape_slp
+        
+    return X_mat, Y_mat, valid_target_dates, shape_sst, shape_slp, wgts_sst_flat, wgts_slp_flat
 
 
 # ============================================================
 # 2. FONCTIONS DE VISUALISATION (MCA)
 # ============================================================
 
-def plot_mca_modes(U, V, s, shape_sst, shape_slp, sst_lags_days, outdir, n_modes=5):
+def plot_mca_modes(U, V, s, shape_sst, shape_slp, sst_lags, outdir,Cxx, Cyy, sst_std=1.0, slp_std=1.0, n_modes=5,roll_sst=False,wgts_sst_flat=None,wgts_slp_flat=None):
     """
     Affiche les premiers modes couplés de la MCA.
     S'adapte dynamiquement pour afficher tous les lags fournis pour la SST.
     """
+    # === RETOUR À LA PHYSIQUE (Dé-pondération) ===
+    U_phys = np.copy(U)
+    V_phys = np.copy(V)
+    # U contient les modes SST (features_X, modes)
+    if wgts_sst_flat is not None:
+        safe_wgts_sst = np.maximum(wgts_sst_flat, 1e-5)
+        U_phys = U_phys / safe_wgts_sst[:, None] # Division ligne par ligne
+
+    # V contient les modes SLP (modes, features_Y)
+    if wgts_slp_flat is not None:
+        safe_wgts_slp = np.maximum(wgts_slp_flat, 1e-5)
+        V_phys = V_phys / safe_wgts_slp[None, :] # Division colonne par colonne
+
+    extent_slp = [-100, 40, 20, 70] 
+    if roll_sst:
+        extent_sst = [-180, 180, -15, 70]
+    else:
+        extent_sst = [0, 359.9, -15, 70]
+
     scf = (s**2) / np.sum(s**2) * 100 # Squared Covariance Fraction
     
     h_sst, w_sst = shape_sst
     h_slp, w_slp = shape_slp
-    num_lags = len(sst_lags_days)
+    num_lags = len(sst_lags)
     
     # Création d'une grille adaptative : n_modes lignes, (num_lags + 1) colonnes
-    fig, axes = plt.subplots(n_modes, num_lags + 1, figsize=(6 * (num_lags + 1), 4 * n_modes))
+    fig, axes = plt.subplots(n_modes, num_lags + 1, figsize=(6 * (num_lags + 1), 4 * n_modes),subplot_kw={'projection': ccrs.PlateCarree()})
     fig.suptitle(f"Maximum Covariance Analysis (MCA) - Top {n_modes} Modes", fontsize=18)
     
     # Sécurité si un seul mode est demandé (axes devient 1D au lieu de 2D)
@@ -102,12 +218,17 @@ def plot_mca_modes(U, V, s, shape_sst, shape_slp, sst_lags_days, outdir, n_modes
         axes = np.expand_dims(axes, axis=0)
         
     for i in range(n_modes):
+        # 1. CALCUL DES ÉCARTS-TYPES ASSOCIES AUX MODES TEMPORELS
+        sigma_Ai = np.sqrt(np.maximum(U[:, i].T @ Cxx @ U[:, i], 1e-10))
+        sigma_Bi = np.sqrt(np.maximum(V[i, :] @ Cyy @ V[i, :].T, 1e-10))
         # Reconstruction 3D (lags, lat, lon) pour la SST
-        mode_sst_full = U[:, i].reshape((num_lags, h_sst, w_sst))
-        
-        # Reconstruction 2D (lat, lon) pour la SLP
-        mode_slp = V[i, :].reshape((h_slp, w_slp))
-        
+        # mode_sst_full = U[:, i].reshape((num_lags, h_sst, w_sst))
+        # mode_slp = V[i, :].reshape((h_slp, w_slp))
+        # 2. APPLICATION DU DOUBLE SCALING (Ecart-type du mode X Ecart-type global)
+        mode_sst_full = (U_phys[:, i] * sigma_Ai * sst_std).reshape((num_lags, h_sst, w_sst))
+        mode_slp = (V_phys[i, :] * sigma_Bi * slp_std).reshape((h_slp, w_slp))
+
+
         # On calcule une limite de couleur globale pour TOUS les lags de la SST 
         # afin que l'échelle d'intensité soit comparable entre les différentes temporalités
         vlim_sst = np.max(np.abs(mode_sst_full))
@@ -116,22 +237,25 @@ def plot_mca_modes(U, V, s, shape_sst, shape_slp, sst_lags_days, outdir, n_modes
         # 1. Plot de tous les Lags de SST
         for l in range(num_lags):
             ax_sst = axes[i, l]
-            im_sst = ax_sst.imshow(mode_sst_full[l], cmap='RdBu_r', origin='lower', vmin=-vlim_sst, vmax=vlim_sst)
-            ax_sst.set_title(f"Mode {i+1} SST (-{sst_lags_days[l]} jours)")
+            im_sst = ax_sst.imshow(mode_sst_full[l], cmap='RdBu_r', origin='lower', vmin=-vlim_sst, vmax=vlim_sst,transform=ccrs.PlateCarree(), extent=extent_sst)
+            unit = "mois" if "monthly" in outdir else "jours"
+            ax_sst.set_title(f"Mode {i+1} SST (-{sst_lags[l]} {unit})")
+            ax_sst.coastlines()
             
             # On n'ajoute la barre de couleur qu'au dernier lag SST pour ne pas surcharger la figure
             if l == num_lags - 1:
-                fig.colorbar(im_sst, ax=ax_sst, fraction=0.046, pad=0.04)
+                cbar_sst = fig.colorbar(im_sst, ax=ax_sst, fraction=0.046, pad=0.04)
+                cbar_sst.set_label('SST Anom (K)') # Échelle Océan
         
         # 2. Plot de la SLP (dernière colonne)
         ax_slp = axes[i, num_lags]
-        im_slp = ax_slp.imshow(mode_slp, cmap='RdBu_r', origin='lower', vmin=-vlim_slp, vmax=vlim_slp)
+        im_slp = ax_slp.imshow(mode_slp, cmap='RdBu_r', origin='lower', vmin=-vlim_slp, vmax=vlim_slp,transform=ccrs.PlateCarree(), extent=extent_slp)
         ax_slp.set_title(f"Mode {i+1} SLP (SCF = {scf[i]:.2f}%)")
-        fig.colorbar(im_slp, ax=ax_slp, fraction=0.046, pad=0.04)
+        ax_slp.coastlines()
+        cbar_slp = fig.colorbar(im_slp, ax=ax_slp, fraction=0.046, pad=0.04)
+        cbar_slp.set_label('SLP Anom (hPa)') # Échelle Atmosphère
         
-    plt.tight_layout()
-    # On descend légèrement le titre principal pour qu'il ne chevauche pas les sous-titres
-    plt.subplots_adjust(top=1 - (0.05 / n_modes)) 
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.savefig(os.path.join(outdir, "mca_coupled_modes.png"), dpi=150)
     plt.close()
 
@@ -238,13 +362,18 @@ if __name__ == "__main__":
     parser.add_argument('--duree_lissage', type=int, default=10)
     # On peut rajouter des arguments pour gérer plusieurs lags
     parser.add_argument('--sst_lags', type=int, nargs='+', default=[35], help='Lags en jours pour la SST (ex: 35 65 95)')
+    parser.add_argument('--roll_sst', action='store_true', help='Appliquer un lissage glissant à la SST avant la MCA')
+    # NOUVEAUX ARGUMENTS
+    parser.add_argument('--monthly_reduction', action='store_true', help='Utiliser les données mensuelles (_1mo.nc)')
+    parser.add_argument('--lat_weight', action='store_true', help='Appliquer la pondération spatiale sqrt(cos(lat))')
+    parser.add_argument('--winter_months', type=int, nargs='+', default=[11, 12, 1, 2], help='Mois d\'hiver à considérer (ex: 11 12 1 2 pour NDJF)')
     args = parser.parse_args()
 
     train_members_87 = ['1041.003', '1061.004', '1081.005', '1101.006', '1121.007', '1141.008', '1161.009', '1181.010', '1231.001', '1231.002', '1231.003', '1231.004', '1231.005', '1231.006', '1231.007', '1231.008', '1231.009', '1231.010', '1231.011', '1231.012', '1231.013', '1231.014', '1231.015', '1231.016', '1231.017', '1231.018', '1231.019', '1231.020', '1251.001', '1251.002', '1251.003', '1251.004', '1251.005', '1251.006', '1251.007', '1251.008', '1251.009', '1251.010', '1251.011', '1251.012', '1251.013', '1251.014', '1251.015', '1251.016', '1251.017', '1251.018', '1251.019', '1251.020', '1281.001', '1281.002', '1281.003', '1281.004', '1281.005', '1281.006', '1281.007', '1281.008', '1281.009', '1281.010', '1281.011', '1281.012', '1281.013', '1281.014', '1281.015', '1281.016', '1281.017', '1281.018', '1281.019', '1281.020', '1301.001', '1301.002', '1301.003', '1301.004', '1301.005', '1301.006', '1301.007', '1301.008', '1301.009', '1301.010', '1301.011', '1301.012', '1301.013', '1301.014', '1301.015', '1301.016', '1301.017', '1301.018', '1301.019', '1301.020']
     
     nb_members_train = len(train_members_87)
     train_members = train_members_87
-    winter_months = [11, 12, 1, 2] # NDJF
+    winter_months = args.winter_months
     
 
     if args.machine == 'hacienda':
@@ -264,8 +393,19 @@ if __name__ == "__main__":
         path_SST = "/Users/remimoysan/Desktop/Jean_Zay/work_jz/data/SST/"
         base_home = "/Users/remimoysan/Desktop/Jean_Zay/work_jz/stage_isir_jz/data_analysis/mca_slp_sst/"
 
-    
-    outdir_name = f'MCA_NDJF_{nb_members_train}membres_lags_{"_".join(map(str, args.sst_lags))}_lissage_{args.duree_lissage}d'
+    # ============================================================
+    # 3.5 CALCUL DES ÉCARTS-TYPES GLOBAUX
+    # ============================================================
+    dynamic_sst_std, dynamic_slp_std = compute_mca_stds(
+        train_members, path_SST, path_SLP, winter_months, 
+        sst_lags=args.sst_lags, duree_lissage=args.duree_lissage, 
+        roll_sst=args.roll_sst, monthly_reduction=args.monthly_reduction, lat_weight=args.lat_weight
+    )
+
+    if not args.monthly_reduction:
+        outdir_name = f'MCA_months_{"_".join(map(str, winter_months))}_{nb_members_train}membres_lags_{"_".join(map(str, args.sst_lags))}_lissage_{args.duree_lissage}d_roll_sst_{args.roll_sst}_lat_weight_{args.lat_weight}_sst_std_{dynamic_sst_std:.4f}_slp_std_{dynamic_slp_std:.4f}'
+    else:
+        outdir_name = f'MCA_months_{"_".join(map(str, winter_months))}_{nb_members_train}membres_lags_{"_".join(map(str, args.sst_lags))}_monthly_reduction_roll_sst_{args.roll_sst}_lat_weight_{args.lat_weight}_sst_std_{dynamic_sst_std:.4f}_slp_std_{dynamic_slp_std:.4f}'
     outdir = os.path.join(base_home, outdir_name)
     os.makedirs(outdir, exist_ok=True)
 
@@ -280,14 +420,22 @@ if __name__ == "__main__":
     Cxx = None # Auto-covariance de X
     Cyy = None # Auto-covariance de Y
     N_total = 0 # Nombre total d'échantillons
+
+    global_wgts_sst = None
+    global_wgts_slp = None
     
     for i, member in enumerate(train_members):
         print(f"Traitement du membre {member} ({i+1}/{nb_members_train})...")
-        X, Y, dates, shape_sst, shape_slp = load_member_mca_data(
+        X, Y, dates, shape_sst, shape_slp, w_sst, w_slp = load_member_mca_data(
             member, path_SST, path_SLP, winter_months, 
-            sst_lags_days=args.sst_lags, duree_lissage=args.duree_lissage
+            sst_lags=args.sst_lags, duree_lissage=args.duree_lissage, roll_sst=args.roll_sst, monthly_reduction=args.monthly_reduction, lat_weight=args.lat_weight,sst_std=dynamic_sst_std, slp_std=dynamic_slp_std
         )
         
+        # Sauvegarde de la grille des poids à la première itération
+        if w_sst is not None and global_wgts_sst is None:
+            global_wgts_sst = w_sst
+            global_wgts_slp = w_slp
+
         N_total += X.shape[0]
         
         if C is None:
@@ -319,7 +467,7 @@ if __name__ == "__main__":
     plot_scf(s, outdir, n_modes_plot=50)
     
     # Tracer les 5 premiers modes couplés
-    plot_mca_modes(U, Vt, s, shape_sst, shape_slp, args.sst_lags, outdir, n_modes=5)
+    plot_mca_modes(U, Vt, s, shape_sst, shape_slp, args.sst_lags, outdir, Cxx=Cxx, Cyy=Cyy, sst_std=dynamic_sst_std, slp_std=dynamic_slp_std, n_modes=5, roll_sst=args.roll_sst, wgts_sst_flat=global_wgts_sst, wgts_slp_flat=global_wgts_slp)
     
     # Sauvegarde du modèle (les matrices) au cas où l'on veut calculer des projections (expansion coefficients) plus tard
     model_path = os.path.join(outdir, 'mca_model.joblib')
@@ -360,9 +508,9 @@ if __name__ == "__main__":
     A1_list, B1_list, Y_all_list = [], [], []
     
     for member in train_members:
-        X, Y, _, _, _ = load_member_mca_data(
+        X, Y, _, _, _,_,_ = load_member_mca_data(
             member, path_SST, path_SLP, winter_months, 
-            sst_lags_days=args.sst_lags, duree_lissage=args.duree_lissage
+            sst_lags=args.sst_lags, duree_lissage=args.duree_lissage,roll_sst=args.roll_sst, monthly_reduction=args.monthly_reduction, lat_weight=args.lat_weight,sst_std=dynamic_sst_std, slp_std=dynamic_slp_std
         )
         A1_list.append(X @ U[:, mode_idx])
         B1_list.append(Y @ Vt[mode_idx, :].T)
