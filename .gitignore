@@ -90,6 +90,15 @@ stage_isir_jz/data_analysis/pca_sst/
 stage_isir_jz/data_analysis/vae_slp/
 stage_isir_jz/linear_models/output/
 
+# Dossier retiré du git final 
+stage_isir_jz/trees_old/
+stage_isir_jz/cnn/cnn_classifier/
+stage_isir_jz/vision_transformer/vit_classifier/
+stage_isir_jz/vision_transformer/vit_with_full_slp/
+stage_isir_jz/data_analysis/anciennes_visualisations/
+stage_isir_jz/linear_models/old_optuna/
+stage_isir_jz/embedding_2_embedding/old_optuna/
+stage_isir_jz/vision_transformer/vit_with_slp_embedding/optuna_old
 
 # Ignorer les crash dumps (core dumps)
 core-*
