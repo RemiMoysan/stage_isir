@@ -208,7 +208,7 @@ def plot_vae_reconstructions(slp_true_list, slp_recon_list, time_list, outdir, e
         cbar2.set_label("Pa")
 
     plt.tight_layout()
-    plt.savefig(os.path.join(outdir, f"vae_reconstructions_epoch_{epoch}.png"), dpi=150)
+    # plt.savefig(os.path.join(outdir, f"vae_reconstructions_epoch_{epoch}.png"), dpi=150)
     plt.close()
 
 def loss_figure(epochs, train_losses, val_losses, outdir_new, epoch_times=None):
@@ -408,7 +408,7 @@ if __name__ == "__main__":
         # ---------------- EARLY STOPPING & PLOTS ----------------
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), f'{outdir}/best_vae.pth')
+            torch.save(model.state_dict(), f'{outdir}/beta{beta_kld}latent{latent_dim}.pth')
             patience_counter = 0
             print(f"--> Saved best VAE model")
         else:
@@ -428,7 +428,7 @@ if __name__ == "__main__":
         plt.plot(train_losses, label='Train Loss')
         plt.plot(val_losses, label='Val Loss')
         plt.legend()
-        plt.savefig(os.path.join(outdir, 'loss_curve.png'))
+        # plt.savefig(os.path.join(outdir, 'loss_curve.png'))
         plt.close()
 
     elapsed_time = (time.time() - start_time) / 60

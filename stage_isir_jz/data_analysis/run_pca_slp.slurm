@@ -26,11 +26,13 @@ cd $WORK/stage_isir_jz/data_analysis/
 
 #     --monthly_reduction \
 #     --normalize \
+#  --lat_weight
 
 # 5. Exécution du code
 srun python pca_on_slp.py \
     --machine jean-zay-work \
     --duree_lissage 0 \
-    --latent_dim 128  \
+    --latent_dim 128 \
     --winter_months 11 12 1 2 \
-    --lat_weight
+    --monthly_reduction \
+    --lat_weight \

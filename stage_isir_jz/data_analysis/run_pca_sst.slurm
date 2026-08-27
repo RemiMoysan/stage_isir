@@ -33,9 +33,8 @@ cd $WORK/stage_isir_jz/data_analysis/
 srun python pca_on_sst.py \
     --machine jean-zay-work \
     --duree_lissage 0 \
-    --latent_dim 128  \
-    --winter_months 2 \
+    --latent_dim 512  \
+    --winter_months 8 9 10 11 12 1 2 \
     --monthly_reduction \
     --roll_sst \
-    --normalize \
     --lat_weight \

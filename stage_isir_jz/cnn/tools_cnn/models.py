@@ -146,11 +146,13 @@ class conv_geo(nn.Module):
             nn.BatchNorm2d(out_ch),
             act_layer
         )
+        # un biais serait inutile puisque la BN va le supprimer.
         self.kx = kx
+        self.ky = ky
 
     def forward(self, x):
-        kx = self.kx
-        x = F.pad(x, [kx // 2, kx // 2, 0, 0], mode='circular')
+        ky = self.ky
+        x = F.pad(x, [ky // 2, ky // 2, 0, 0], mode='circular') # ky et pas kx car c'est sur la longitude ie deuxième compo 
         x = self.conv_nopad(x)
         return x
 
@@ -158,7 +160,7 @@ class down_layer(nn.Module):
     def __init__(self, in_ch, out_ch, drop, kx, ky, mpx, mpy, pool_type='max', activation='tanh'):
         super(down_layer, self).__init__()
         self.convg = conv_geo(in_ch, out_ch, kx, ky, activation=activation)
-        self.drop = nn.Dropout(p=drop)
+        self.drop = nn.Dropout2d(p=drop) # drop out 2d (ie par feature) plutôt que dropout classique. 
         if pool_type == 'max':
             self.pool = nn.MaxPool2d([mpx, mpy])
         elif pool_type == 'avg':
@@ -208,7 +210,7 @@ class CNN_Latent_SLP_Multimodal1(nn.Module):
                 # On utilise des kernels plus petits (3,3 partout) 
                 # et on pool moins agressivement sur la longitude
                 down_layer(in_chans_slp, n_feat, dr, 3, 3, 2, 2), 
-                down_layer(n_feat, n_feat, dr, 3, 3, 1, 1), # Plus de pooling ici
+                down_layer(n_feat, n_feat, dr, 3, 3, 2, 2),
                 down_layer(n_feat, n_feat, dr, 3, 3, 1, 1)
             )
 
@@ -263,7 +265,7 @@ class CNN_Latent_SLP_Multimodal1_tunable(nn.Module):
 
     Choix : type de kernel et de pool pour la première couche non carré, lazylinear ou gap à la toute fin, augmentation éventuelle géo du nombre de feature, diminition progressive éventuelle des pools
     """
-    def __init__(self, dr=0.1, nb_out=10, 
+    def __init__(self, dr_conv=0.1, dr_fc=0.5,fc_dim=128,nb_out=10, 
                  in_chans_sst=3, in_chans_slp=2, 
                  n_feat=8, early_fusion_sst=True,
                  depth=3, filter_mult=1, 
@@ -283,13 +285,13 @@ class CNN_Latent_SLP_Multimodal1_tunable(nn.Module):
             if self.early_fusion_sst:
                 self.sst_branch = self._build_branch(
                     in_channels=in_chans_sst, depth=depth, base_feat=n_feat, 
-                    filter_mult=filter_mult, kx_base=sst_kx, ky_base=sst_ky, dr=dr, pool_type=pool_type, activation=activation, pool_x_base=sst_pool_x, pool_y_base=sst_pool_y, pool_strategy=pool_strategy
+                    filter_mult=filter_mult, kx_base=sst_kx, ky_base=sst_ky, dr=dr_conv, pool_type=pool_type, activation=activation, pool_x_base=sst_pool_x, pool_y_base=sst_pool_y, pool_strategy=pool_strategy
                 )
             else:
                 self.sst_branches = nn.ModuleList([
                     self._build_branch(
                         in_channels=1, depth=depth, base_feat=n_feat, 
-                        filter_mult=filter_mult, kx_base=sst_kx, ky_base=sst_ky, dr=dr, pool_type=pool_type, activation=activation, pool_x_base=sst_pool_x, pool_y_base=sst_pool_y, pool_strategy=pool_strategy
+                        filter_mult=filter_mult, kx_base=sst_kx, ky_base=sst_ky, dr=dr_conv, pool_type=pool_type, activation=activation, pool_x_base=sst_pool_x, pool_y_base=sst_pool_y, pool_strategy=pool_strategy
                     ) for _ in range(in_chans_sst)
                 ])
             
@@ -297,17 +299,17 @@ class CNN_Latent_SLP_Multimodal1_tunable(nn.Module):
         if self.use_slp:
             self.slp_branch = self._build_branch(
                 in_channels=in_chans_slp, depth=depth, base_feat=n_feat, 
-                filter_mult=filter_mult, kx_base=3, ky_base=3, dr=dr, pool_type=pool_type, activation=activation, pool_x_base=2, pool_y_base=2, pool_strategy=pool_strategy # SLP est déjà plus carrée 3x3 et 2x2
+                filter_mult=filter_mult, kx_base=3, ky_base=3, dr=dr_conv, pool_type=pool_type, activation=activation, pool_x_base=2, pool_y_base=2, pool_strategy=pool_strategy # SLP est déjà plus carrée 3x3 et 2x2
             )
 
         # Le LazyLinear est magique ici : peu importe la profondeur (depth) 
         # ou le multiplicateur de filtres, il calculera l'aplatissement tout seul.
         final_act = nn.Tanh() if activation == 'tanh' else nn.ReLU()
         self.regr = nn.Sequential(
-            nn.Dropout(p=dr), 
-            nn.LazyLinear(n_feat * (filter_mult ** (depth - 1))), # Estimation pour le nom, LazyLinear fait le reste
+            nn.Dropout(p=dr_fc), 
+            nn.LazyLinear(fc_dim), # Estimation pour le nom, LazyLinear fait le reste
             final_act,
-            nn.Linear(n_feat * (filter_mult ** (depth - 1)), nb_out)
+            nn.Linear(fc_dim, nb_out)
         )
 
     def _build_branch(self, in_channels, depth, base_feat, filter_mult, kx_base, ky_base, dr, pool_type, activation, pool_x_base, pool_y_base, pool_strategy):

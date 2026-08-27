@@ -1,0 +1,31 @@
+Pour le script de recherche d'hyperparamètres :
+
+On doit fixer :
+- le nombre de membre à val (doublé pour le test) : prendre 5
+- la seed : prendre 1
+
+Hyperparamètre à fixer car semble peu impactant / clairement biaisé : 
+- include_lag1
+- slp_lags_months []
+- use_lags_attention false
+- norm_first true
+
+Hyperparamètre à explorer ?
+1. bs 
+2. lr
+3. dr
+4. depth 
+5. num_head
+6. head_dim
+7. mlp_ratio
+8. bootleneck_ratio
+9. transformer_act
+10. pool_strategy
+11. head_act
+12. sst_patch_x 
+13. sst_patch_y
+14. loss_type : à fixer selon la métrique visé (impact évident)
+15. weight_decay
+16. noise_std
+17. grad_clip
+18. num_sst_lags

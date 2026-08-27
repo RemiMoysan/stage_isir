@@ -58,9 +58,10 @@ srun python vae_on_slp.py \
     --beta_kld 50.0 \
     --nb_members_train 80 \
     --nb_epochs 50 \
-    --latent_dim 5 \
+    --latent_dim 3 \
     --duree_lissage 0 \
-    --winter_months 11 12 1 2 \
+    --winter_months 2 \
+    --monthly_reduction
 
 
 

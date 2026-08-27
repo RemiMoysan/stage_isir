@@ -4,7 +4,7 @@
 #SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/mca_slp_%j.out           # Fichier d'erreur (fusionné avec la sortie)
 #SBATCH -A uxg@cpu                     # Allocation du projet (uxg) sur les heures CPU
 #SBATCH --partition=prepost
-#SBATCH --time=18:00:00                  # Temps d'exécution 
+#SBATCH --time=04:00:00                  # Temps d'exécution 
 #SBATCH --nodes=1                        # Un seul nœud de calcul
 #SBATCH --ntasks=1                       # Une seule tâche
 #SBATCH --cpus-per-task=10               # 10 cœurs pour accélérer Numpy/Scikit-learn
@@ -31,9 +31,12 @@ cd $WORK/stage_isir_jz/data_analysis/
 
 srun python mca_on_slp_sst.py \
     --machine jean-zay-work \
-    --duree_lissage 30 \
-    --sst_lags 1 2 3 4 5 6 \
-    --roll_sst \
+    --duree_lissage 0 \
+    --sst_lags 1 2 3 \
     --monthly_reduction \
+    --roll_sst \
     --lat_weight \
-    --winter_months 2
+    --winter_months 12 \
+    --nb_val 5 \
+    --max_modes_in 400 \
+    --max_modes_out 200 \

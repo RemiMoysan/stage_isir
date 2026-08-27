@@ -9,7 +9,10 @@ import shap
 import random
 import time 
 import sys
+import re
 from pathlib import Path
+
+# pas besoin des targets donc pas besoin des pondérations par la latitude
 
 project_root = Path(__file__).resolve().parent.parent.parent
 
@@ -22,8 +25,8 @@ parent_dir = str(Path(__file__).resolve().parent.parent)
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
-from tools.datasets import Dataset
-# NOUVEAUX IMPORTS : Ton modèle CNN latent et la fonction d'extraction de la médiane
+# MODIFICATION : Ajout de Dataset_mensuel dans les imports
+from tools.datasets import Dataset, Dataset_mensuel
 from tools_cnn.models import CNN_Latent_SLP_Multimodal1
 from tools.models import get_median_prediction
 
@@ -44,7 +47,6 @@ class SHAP_Embedding_Wrapper(nn.Module):
         self.latent_dim = latent_dim
 
     def forward(self, *inputs):
-        # SHAP fournit les inputs sous forme de tuple basé sur test_data = [test_sst, test_slp]
         x_sst = inputs[0]
         x_slp = inputs[1] if len(inputs) > 1 else None
         
@@ -56,7 +58,7 @@ class SHAP_Embedding_Wrapper(nn.Module):
 
 
 # ============================================================
-# FONCTIONS DE VISUALISATION (Inchangées)
+# FONCTIONS DE VISUALISATION (Adaptées pour jours / mois)
 # ============================================================
 
 def compute_shap_regression_slope(shap_array, input_array):
@@ -71,8 +73,9 @@ def compute_shap_regression_slope(shap_array, input_array):
         slope_map = np.nan_to_num(slope_map, nan=0.0)
     return slope_map
 
-def plot_attribution_maps(mean_attr_array, lags_days, extent, title_prefix, outdir, feature_name="SST", negative_value = False):
-    num_lags = len(lags_days)
+# MODIFICATION : Ajout de time_unit pour dynamiser l'affichage "d" ou "m"
+def plot_attribution_maps(mean_attr_array, lags, extent, title_prefix, outdir, feature_name="SST", negative_value=False, time_unit="d"):
+    num_lags = len(lags)
     fig, axes = plt.subplots(1, num_lags, figsize=(6 * num_lags, 4), subplot_kw={'projection': ccrs.PlateCarree()}, facecolor='white')
     if num_lags == 1: axes = [axes]
 
@@ -87,13 +90,13 @@ def plot_attribution_maps(mean_attr_array, lags_days, extent, title_prefix, outd
         vmin = 0
         cmap = 'Reds'
 
-    for i, lag in enumerate(lags_days):
+    for i, lag in enumerate(lags):
         ax = axes[i]
         ax.set_facecolor('white')
         ax.set_extent(extent, crs=ccrs.PlateCarree())
         ax.coastlines(resolution='110m', color='black', linewidth=0.8)
         im = ax.imshow(mean_attr_array[i], cmap=cmap, origin='lower', vmin=vmin, vmax=vmax, transform=ccrs.PlateCarree(), extent=extent, interpolation='nearest')
-        ax.set_title(f"{feature_name} Lag {lag}d", fontsize=12)
+        ax.set_title(f"{feature_name} Lag {lag}{time_unit}", fontsize=12)
         fig.colorbar(im, ax=ax, shrink=0.6, orientation='horizontal', pad=0.08)
 
     plt.suptitle(title_prefix, fontsize=16, y=1.05)
@@ -102,7 +105,8 @@ def plot_attribution_maps(mean_attr_array, lags_days, extent, title_prefix, outd
     plt.savefig(os.path.join(outdir, filename), dpi=150, facecolor='white', bbox_inches='tight')
     plt.close()
 
-def plot_pixel_beeswarm_with_locator(pixel_shap, pixel_sst, lag, extent, grid_shape, lat_idx, lon_idx, title_prefix, outdir):
+# MODIFICATION : Ajout de time_unit
+def plot_pixel_beeswarm_with_locator(pixel_shap, pixel_sst, lag, extent, grid_shape, lat_idx, lon_idx, title_prefix, outdir, time_unit="d"):
     H, W = grid_shape
     lon_val = extent[0] + (lon_idx / W) * (extent[1] - extent[0])
     lat_val = extent[2] + (lat_idx / H) * (extent[3] - extent[2])
@@ -127,7 +131,7 @@ def plot_pixel_beeswarm_with_locator(pixel_shap, pixel_sst, lag, extent, grid_sh
 
     plt.suptitle(title_prefix, fontsize=12)
     plt.tight_layout()
-    filename = f"Beeswarm_{title_prefix.replace(' ', '_')}_Lag{lag}d_Lat{lat_idx}_Lon{lon_idx}.png"
+    filename = f"Beeswarm_{title_prefix.replace(' ', '_')}_Lag{lag}{time_unit}_Lat{lat_idx}_Lon{lon_idx}.png"
     plt.savefig(os.path.join(outdir, filename), dpi=150, facecolor='white', bbox_inches='tight')
     plt.close()
 
@@ -140,8 +144,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', type=str, required=True)
     parser.add_argument('--machine', type=str, default='jean-zay-work', choices=['hacienda', 'jean-zay-work', 'jean-zay-scratch', 'mac_local'])
+    
+    # MODIFICATION : Ajout des arguments mensuels et spatiaux
     parser.add_argument('--sst_lags_days', type=int, nargs='*', default=[35, 65, 95])
     parser.add_argument('--slp_lags_days', type=int, nargs='*', default=[])
+    parser.add_argument('--sst_lags_months', type=int, nargs='*', default=[2, 3, 4])
+    parser.add_argument('--slp_lags_months', type=int, nargs='*', default=[])
+    parser.add_argument('--monthly_reduction', action='store_true', help='Utiliser les données mensuelles (_1mo.nc)')
+    parser.add_argument('--lat_weight', action='store_true', help='Pondération spatiale sqrt(cos(lat))')
+    
+
     parser.add_argument('--winter_months', type=int, nargs='+', default=[1, 2])
     parser.add_argument('--duree_lissage', type=int, default=10)
     parser.add_argument('--roll_sst', action='store_true')
@@ -152,16 +164,14 @@ if __name__ == "__main__":
     parser.add_argument('--generate_beeswarms', action='store_true')
     parser.add_argument('--beeswarm_stride', type=int, default=40)
     
-    # --- NOUVEAUX PARAMÈTRES LATENTS ---
-    parser.add_argument('--latent_dim', type=int, default=128, help='Dimension de l\'espace latent')
-    parser.add_argument('--top_k_components', type=int, default=3, help='Nombre de dimensions latentes à expliquer via SHAP (ex: les 3 premières composantes)')
-    parser.add_argument('--early_fusion_sst', action='store_true', help='Fusion précoce SST')
-    parser.add_argument('--loss_type', type=str, choices=['mse', 'l1', 'quantile'], default='mse')
+    parser.add_argument('--latent_dim', type=int, default=128)
+    parser.add_argument('--top_k_components', type=int, default=3)
+    parser.add_argument('--early_fusion_sst', action='store_true')
+    parser.add_argument('--loss_type', type=str, choices=['mse', 'l1', 'quantile', 'correlation'], default='mse')
     parser.add_argument('--quantiles', type=float, nargs='+', default=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
     
-    # Choix du membre de validation 
-    parser.add_argument('--nb_members_val', type=int, default=1, help='Nombre de membres de validation à utiliser pour le calcul de SHAP. Bon choix : 1')
-    parser.add_argument('--seed', type=int, default=42, help='Seed pour la reproductibilité du choix du / des membres')
+    parser.add_argument('--nb_members_val', type=int, default=1)
+    parser.add_argument('--seed', type=int, default=42)
 
     args = parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -173,41 +183,58 @@ if __name__ == "__main__":
     rng.shuffle(all_members)
     val_members = all_members[-args.nb_members_val:]
 
+    # MODIFICATION : Sélection dynamique des lags actifs selon monthly_reduction
+    active_sst_lags = args.sst_lags_months if args.monthly_reduction else args.sst_lags_days
+    active_slp_lags = args.slp_lags_months if args.monthly_reduction else args.slp_lags_days
+    time_unit = "m" if args.monthly_reduction else "d"
+
+    # EXTRACTION AUTONOME DE SLP_STD DEPUIS LE NOM DU FICHIER / DOSSIER
+    dynamic_slp_std = 596.0  # Valeur par défaut de sécurité
+    match = re.search(r'slp_std([0-9.]+)', args.model_path)
+    if match:
+        dynamic_slp_std = float(match.group(1))
+        print(f"✅ slp_std lu automatiquement depuis le nom du modèle : {dynamic_slp_std}")
+    else:
+        print(f"⚠️ 'slp_std' introuvable dans model_path. Utilisation de la valeur par défaut : {dynamic_slp_std}")
+
     # 1. INITIALISATION DU MODÈLE
     out_features = args.latent_dim * len(args.quantiles) if args.loss_type == 'quantile' else args.latent_dim
 
     base_model = CNN_Latent_SLP_Multimodal1(
         dr=0.0, 
         nb_out=out_features, 
-        in_chans_sst=len(args.sst_lags_days), 
-        in_chans_slp=len(args.slp_lags_days), 
+        in_chans_sst=len(active_sst_lags), 
+        in_chans_slp=len(active_slp_lags), 
         n_feat=8, 
         early_fusion_sst=args.early_fusion_sst
     ).to(device)
 
-    # DUMMY FORWARD, peut etre qu'on peut s'en passer. 
+    # Dummy forward
     with torch.no_grad():
-        dummy_sst = torch.zeros(1, len(args.sst_lags_days), 85, 360).to(device) if len(args.sst_lags_days) > 0 else None
-        dummy_slp = torch.zeros(1, len(args.slp_lags_days), 53, 113).to(device) if len(args.slp_lags_days) > 0 else None
+        dummy_sst = torch.zeros(1, len(active_sst_lags), 85, 360).to(device) if len(active_sst_lags) > 0 else None
+        dummy_slp = torch.zeros(1, len(active_slp_lags), 53, 113).to(device) if len(active_slp_lags) > 0 else None
         _ = base_model(dummy_sst, dummy_slp)
 
     checkpoint = torch.load(args.model_path, map_location=device)
     base_model.load_state_dict(checkpoint['state_dict'] if 'state_dict' in checkpoint else checkpoint)
     base_model.eval()
 
-    # ENCAPSULATION DU MODÈLE POUR SHAP
     model = SHAP_Embedding_Wrapper(base_model, args.loss_type, args.quantiles, args.latent_dim)
     model.eval()
 
-    # 2. CHARGEMENT DES DONNÉES DE TEST
-    test_set = Dataset(members=val_members, selected_months=args.winter_months, machine=args.machine, target_type='map', sst_lags_days=args.sst_lags_days, slp_lags_days=args.slp_lags_days, duree_lissage=args.duree_lissage, roll_sst=args.roll_sst)
+    # 2. CHARGEMENT DYNAMIQUE DES DONNÉES DE TEST (Dataset vs Dataset_mensuel)
+    if not args.monthly_reduction:
+        test_set = Dataset(members=val_members, selected_months=args.winter_months, machine=args.machine, target_type='map', sst_lags_days=active_sst_lags, slp_lags_days=active_slp_lags, duree_lissage=args.duree_lissage, roll_sst=args.roll_sst, slp_std=dynamic_slp_std)
+    else:
+        test_set = Dataset_mensuel(members=val_members, selected_months=args.winter_months, machine=args.machine, target_type='map', sst_lags_months=active_sst_lags, slp_lags_months=active_slp_lags, roll_sst=args.roll_sst, slp_std=dynamic_slp_std)
+
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=args.n_test, shuffle=True)
     
     test_sst, test_slp, _, _, dates, _ = next(iter(test_loader))
     test_sst = test_sst.to(device)
     test_data = [test_sst]
     
-    if len(args.slp_lags_days) > 0:
+    if len(active_slp_lags) > 0:
         test_slp = test_slp.to(device)
         test_data.append(test_slp)
 
@@ -218,8 +245,8 @@ if __name__ == "__main__":
     # ============================================================
     # CALCUL SHAP
     # ============================================================
-    print(f"\nLancement de {args.method.upper()}")
-    explain_dir = os.path.join(outdir, f"explain_{args.method}_background_type_{args.bg_type}_{args.n_test}_samples_top{args.top_k_components}_components_stride_{args.beeswarm_stride}_val_members_{args.nb_members_val}")
+    print(f"\nLancement de {args.method.upper()} (Mode mensuel : {args.monthly_reduction})")
+    explain_dir = os.path.join(outdir, f"explain_{args.method}_background_{args.bg_type}_{args.n_test}samples_top{args.top_k_components}comp_stride{args.beeswarm_stride}_val{args.nb_members_val}_monthly{args.monthly_reduction}")
     os.makedirs(explain_dir, exist_ok=True)
     
     if args.generate_beeswarms:
@@ -227,28 +254,27 @@ if __name__ == "__main__":
         os.makedirs(beeswarm_dir, exist_ok=True)
 
     if args.bg_type == 'data':
-        bg_set = Dataset(members=val_members, selected_months=args.winter_months, machine=args.machine, target_type='map', sst_lags_days=args.sst_lags_days, slp_lags_days=args.slp_lags_days, duree_lissage=args.duree_lissage, roll_sst=args.roll_sst)
+        if not args.monthly_reduction:
+            bg_set = Dataset(members=val_members, selected_months=args.winter_months, machine=args.machine, target_type='map', sst_lags_days=active_sst_lags, slp_lags_days=active_slp_lags, duree_lissage=args.duree_lissage, roll_sst=args.roll_sst, slp_std=dynamic_slp_std)
+        else:
+            bg_set = Dataset_mensuel(members=val_members, selected_months=args.winter_months, machine=args.machine, target_type='map', sst_lags_months=active_sst_lags, slp_lags_months=active_slp_lags, roll_sst=args.roll_sst, slp_std=dynamic_slp_std)
+            
         bg_loader = torch.utils.data.DataLoader(bg_set, batch_size=args.n_background, shuffle=True)
         bg_sst, bg_slp, _, _, _, _ = next(iter(bg_loader))
         background_data = [bg_sst.to(device)]
-        if len(args.slp_lags_days) > 0: background_data.append(bg_slp.to(device))
+        if len(active_slp_lags) > 0: background_data.append(bg_slp.to(device))
     else:
         background_data = [torch.zeros_like(test_sst[0:1])]
-        if len(args.slp_lags_days) > 0: background_data.append(torch.zeros_like(test_slp[0:1]))
+        if len(active_slp_lags) > 0: background_data.append(torch.zeros_like(test_slp[0:1]))
 
-    # SHAP expliquera ici la sortie vectorielle de taille (latent_dim)
     explainer = shap.GradientExplainer(model, background_data) if args.method == 'gradient' else shap.DeepExplainer(model, background_data)
     attributions_latent_dims = explainer.shap_values(test_data)
 
-    # ============================================================
-    # SÉCURITÉ FORMAT SHAP (Bulletproof pour 1 ou N dimensions)
-    # ============================================================
+    # Sécurité format SHAP
     if isinstance(attributions_latent_dims, np.ndarray) or torch.is_tensor(attributions_latent_dims):
-        # Cas : 1 seule sortie (latent_dim=1) et 1 seule entrée (SST)
         attributions_latent_dims = [[attributions_latent_dims]]
     elif isinstance(attributions_latent_dims, list):
         if len(attributions_latent_dims) > 0 and not isinstance(attributions_latent_dims[0], list):
-            # Cas ambigus : 1 Sortie / Multi-entrées OU Multi-sorties / 1 Entrée
             if out_features == 1:
                 attributions_latent_dims = [attributions_latent_dims]
             else:
@@ -257,49 +283,41 @@ if __name__ == "__main__":
     sst_inputs_np = test_data[0].cpu().numpy()
 
     # ============================================================
-    # GÉNÉRATION DES GRAPHES (Uniquement sur le Top K des latents)
+    # GÉNÉRATION DES GRAPHES
     # ============================================================
-    # On boucle uniquement sur les premières dimensions (ex: les 3 premières composantes de la PCA)
     for c in range(args.top_k_components):
         print(f"  Traitement de la Dimension Latente {c+1}/{args.latent_dim}...")
         
-        # attributions_latent_dims est une liste de longueur (latent_dim)
         attr_c = attributions_latent_dims[c]
         shap_sst_dim = attr_c[0] if isinstance(attr_c, list) else attr_c
-        
-        # Extraction en numpy (on le fait une seule fois en haut pour toutes les cartes)
         shap_sst_np = shap_sst_dim.cpu().numpy() if torch.is_tensor(shap_sst_dim) else shap_sst_dim
 
-        # 1. CARTE GLOBALE A : Moyenne de la VALEUR ABSOLUE (Importance)
+        # 1. Importance Absolue
         mean_abs_shap_sst = np.mean(np.abs(shap_sst_np), axis=0)
-        plot_attribution_maps(mean_abs_shap_sst, args.sst_lags_days, extent_sst, f"Importance Absolue Regime {c+1} ({args.method.upper()})", explain_dir, "SST", negative_value=False)
+        plot_attribution_maps(mean_abs_shap_sst, active_sst_lags, extent_sst, f"Importance Absolue Regime {c+1} ({args.method.upper()})", explain_dir, "SST", negative_value=False, time_unit=time_unit)
         
-        # 2. CARTE GLOBALE C : CARTE DE SENSIBILITÉ (Pente de régression brute, beta)
+        # 2. Sensibilité (Pente brute)
         slope_map_sst = compute_shap_regression_slope(shap_sst_np, sst_inputs_np)
-        plot_attribution_maps(slope_map_sst, args.sst_lags_days, extent_sst, f"Sensibilité Regime {c+1} ({args.method.upper()})", explain_dir, "SST_Slope", negative_value=True)
+        plot_attribution_maps(slope_map_sst, active_sst_lags, extent_sst, f"Sensibilité Regime {c+1} ({args.method.upper()})", explain_dir, "SST_Slope", negative_value=True, time_unit=time_unit)
 
-        # 3. CARTE GLOBALE D : IMPACT TYPIQUE (Pente Standardisée)
-        # Écart-type de l'entrée (SST)
+        # 3. Impact Typique
         std_sst = np.std(sst_inputs_np, axis=0)
         standardized_slope = slope_map_sst * std_sst
-        plot_attribution_maps(standardized_slope, args.sst_lags_days, extent_sst, f"Impact Typique Regime {c+1} ({args.method.upper()})", explain_dir, "SST_Typical_Impact", negative_value=True)
+        plot_attribution_maps(standardized_slope, active_sst_lags, extent_sst, f"Impact Typique Regime {c+1} ({args.method.upper()})", explain_dir, "SST_Typical_Impact", negative_value=True, time_unit=time_unit)
 
-        # 4. CARTE GLOBALE B : CARTE DE CORRÉLATION (Déduite mathématiquement !)
-        # Écart-type de la sortie (SHAP)
+        # 4. Corrélation
         std_shap = np.std(shap_sst_np, axis=0)
-        
-        # Calcul r = beta * (std_sst / std_shap) avec protection contre la division par zéro
         with np.errstate(divide='ignore', invalid='ignore'):
             correlation_map_sst = slope_map_sst * (std_sst / std_shap)
             correlation_map_sst = np.nan_to_num(correlation_map_sst, nan=0.0)
             
-        plot_attribution_maps(correlation_map_sst, args.sst_lags_days, extent_sst, f"Correlation Regime {c+1} ({args.method.upper()})", explain_dir, "SST_Corr", negative_value=True)
+        plot_attribution_maps(correlation_map_sst, active_sst_lags, extent_sst, f"Correlation Regime {c+1} ({args.method.upper()})", explain_dir, "SST_Corr", negative_value=True, time_unit=time_unit)
+        
         if args.generate_beeswarms:
             n_test, n_lags, H, W = shap_sst_np.shape
-            
             for lat_idx in range(0, H, args.beeswarm_stride):
                 for lon_idx in range(0, W, args.beeswarm_stride):
-                    for lag_i, lag_days in enumerate(args.sst_lags_days):
+                    for lag_i, lag_val in enumerate(active_sst_lags):
                         pixel_shap_values = shap_sst_np[:, lag_i, lat_idx, lon_idx]
                         pixel_sst_values = sst_inputs_np[:, lag_i, lat_idx, lon_idx]
                         
@@ -309,13 +327,14 @@ if __name__ == "__main__":
                         plot_pixel_beeswarm_with_locator(
                             pixel_shap=pixel_shap_values,
                             pixel_sst=pixel_sst_values,
-                            lag=lag_days,
+                            lag=lag_val,
                             extent=extent_sst,
                             grid_shape=(H, W),
                             lat_idx=lat_idx,
                             lon_idx=lon_idx,
                             title_prefix=f"Latent Dim {c+1}",
-                            outdir=beeswarm_dir
+                            outdir=beeswarm_dir,
+                            time_unit=time_unit
                         )
 
     end_time = time.time()

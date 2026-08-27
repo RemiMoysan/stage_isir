@@ -53,12 +53,13 @@ srun python train_linear_model.py \
     --update 0 \
     --machine jean-zay-work \
     --embed_method pca \
-    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/IPCA_latent1_NDJF_87members_normalizeTrue_duree_lissage10/best_pca_model.joblib" \
-    --seed 42 \
-    --nb_members_train 1 \
-    --nb_members_val 1 \
+    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/0d/IPCA_latent1_11_12_1_2_87members_normalizeTrue_duree_lissage0_wgtFalse_slp_std1070.72/best_pca_model.joblib" \
+    --seed 1 \
+    --nb_members_train 50 \
+    --nb_members_val 5 \
+    --nb_members_test 5 \
     --latent_dim 1 \
-    --sst_lags_days "-7" \
+    --sst_lags_days 1 \
     --slp_lags_days \
     --winter_months 1 2 \
     --bs 128 \
@@ -67,7 +68,8 @@ srun python train_linear_model.py \
     --duree_lissage 0 \
     --normalize \
     --alpha_penalty 0.0 \
-    --penalty_type l2
+    --penalty_type l2 \
+    --roll_sst
 
 
 # 5. NETTOYAGE INDISPENSABLE

@@ -85,6 +85,27 @@ def get_median_prediction(preds, loss_type, quantiles, latent_dim):
     preds_reshaped = preds.view(bs, latent_dim, len(quantiles))
     return preds_reshaped[:, :, median_idx]
 
+def get_median_prediction_full_slp(preds, loss_type, quantiles, out_dim=None):
+    """Extrait la prédiction médiane (q=0.5), compatible vecteurs latents et cartes spatiales 2D."""
+    if loss_type != "quantile":
+        return preds
+
+    median_idx = quantiles.index(0.5)
+
+    # CAS 1 : Sortie Spatiale 4D -> (Batch, Quantiles, Height, Width)
+    if preds.dim() == 4:
+        # On extrait simplement le canal correspondant au quantile médian
+        return preds[:, median_idx : median_idx + 1, :, :]
+        # Note: on garde le :median_idx+1 pour conserver la dimension du canal (B, 1, H, W)
+
+    # CAS 2 : Sortie Latente 2D/3D -> (Batch, latent_dim * n_quantiles)
+    else:
+        bs = preds.size(0)
+        n_q = len(quantiles)
+        # Utilisation de .reshape par sécurité au lieu de .view
+        preds_reshaped = preds.reshape(bs, -1, n_q)
+        return preds_reshaped[:, :, median_idx]
+
 # ============================================================
 # La loss custom de Clara pour la PC1, à comparer avec une MSE classique
 # ============================================================
@@ -309,25 +330,35 @@ class ViT_SST_to_SLP(nn.Module):
 class ViT_Decoded_SLP_Multimodal(nn.Module):
     def __init__(self, sst_size=(85, 360), slp_size=(53, 113), 
                  patch_size_sst=(5, 10), patch_size_slp=(5, 10), 
-                 in_chans_sst=3, in_chans_slp=0, # <-- Accepte maintenant les canaux SLP
-                 embed_dim=128, enc_depth=4, dec_depth=4, num_heads=4, dr=0.1):
+                 in_chans_sst=3, in_chans_slp=0, out_chans=1, # <-- out_chans gère les quantiles !
+                 embed_dim=128, enc_depth=4, dec_depth=4, num_heads=4, dr=0.1, 
+                 use_lags_attention=False):
         super().__init__()
         
         self.patch_size_slp = patch_size_slp
         self.target_slp_size = slp_size
+        self.out_chans = out_chans
+        self.use_lags_attention = use_lags_attention
 
-    
         # --- ENCODEUR : Branche SST ---
         self.use_sst_in = in_chans_sst > 0
         if self.use_sst_in:
-            self.sst_embed = PatchEmbedding(sst_size, patch_size_sst, in_chans_sst, embed_dim)
+            c_in_sst = 1 if use_lags_attention else in_chans_sst
+            self.sst_embed = PatchEmbedding(sst_size, patch_size_sst, c_in_sst, embed_dim)
             self.sst_pos_embed = nn.Parameter(torch.zeros(1, self.sst_embed.num_patches, embed_dim))
+            
+            if use_lags_attention:
+                self.sst_time_embed = nn.Parameter(torch.zeros(1, in_chans_sst, 1, embed_dim))
         
         # --- ENCODEUR : Branche SLP (Optionnelle) ---
         self.use_slp_in = in_chans_slp > 0
         if self.use_slp_in:
-            self.slp_in_embed = PatchEmbedding(slp_size, patch_size_slp, in_chans_slp, embed_dim)
+            c_in_slp = 1 if use_lags_attention else in_chans_slp
+            self.slp_in_embed = PatchEmbedding(slp_size, patch_size_slp, c_in_slp, embed_dim)
             self.slp_in_pos_embed = nn.Parameter(torch.zeros(1, self.slp_in_embed.num_patches, embed_dim))
+            
+            if use_lags_attention:
+                self.slp_time_embed = nn.Parameter(torch.zeros(1, in_chans_slp, 1, embed_dim))
 
         if not self.use_sst_in and not self.use_slp_in:
             raise ValueError("Le modèle doit recevoir au moins une source de données (SST ou SLP).") 
@@ -347,7 +378,6 @@ class ViT_Decoded_SLP_Multimodal(nn.Module):
         
         self.slp_queries = nn.Parameter(torch.zeros(1, num_slp_patches_out, embed_dim))
         self.slp_pos_embed = nn.Parameter(torch.zeros(1, num_slp_patches_out, embed_dim))
-        # plutôt que le même positional embedding pour les deux...
         
         dec_layer = nn.TransformerDecoderLayer(
             d_model=embed_dim, nhead=num_heads, dropout=dr, 
@@ -356,16 +386,21 @@ class ViT_Decoded_SLP_Multimodal(nn.Module):
         self.decoder = nn.TransformerDecoder(dec_layer, num_layers=dec_depth)
 
         # --- RECONSTRUCTION ---
-        pixels_per_patch = patch_size_slp[0] * patch_size_slp[1] 
+        # Le nombre de valeurs à prédire par patch est multiplié par le nombre de quantiles (out_chans)
+        pixels_per_patch = patch_size_slp[0] * patch_size_slp[1] * out_chans
         self.head = nn.Linear(embed_dim, pixels_per_patch)
 
         # Init
         if self.use_sst_in:
             nn.init.trunc_normal_(self.sst_pos_embed, std=0.02)
+            if use_lags_attention:
+                nn.init.trunc_normal_(self.sst_time_embed, std=0.02)
         nn.init.trunc_normal_(self.slp_queries, std=0.02)
         nn.init.trunc_normal_(self.slp_pos_embed, std=0.02)
         if self.use_slp_in:
             nn.init.trunc_normal_(self.slp_in_pos_embed, std=0.02)
+            if use_lags_attention:
+                nn.init.trunc_normal_(self.slp_time_embed, std=0.02)
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -380,37 +415,57 @@ class ViT_Decoded_SLP_Multimodal(nn.Module):
     def forward(self, x_sst, x_slp):
         B = x_sst.shape[0] if self.use_sst_in else x_slp.shape[0] 
         
-        tokens = None
+        # --- 1. PHASE ENCODEUR ---
+        if self.use_lags_attention:
+            if self.use_sst_in:
+                _, T_sst, H_sst, W_sst = x_sst.shape
+                x_sst_re = x_sst.reshape(B * T_sst, 1, H_sst, W_sst)
+                tokens_sst = self.sst_embed(x_sst_re) 
+                tokens_sst = tokens_sst.reshape(B, T_sst, -1, tokens_sst.shape[-1])
+                tokens_sst = tokens_sst + self.sst_pos_embed.unsqueeze(1) + self.sst_time_embed
+                tokens_sst = tokens_sst.reshape(B, -1, tokens_sst.shape[-1])
+
+            if self.use_slp_in:
+                _, T_slp, H_slp, W_slp = x_slp.shape
+                x_slp_re = x_slp.reshape(B * T_slp, 1, H_slp, W_slp)
+                tokens_slp = self.slp_in_embed(x_slp_re)
+                tokens_slp = tokens_slp.reshape(B, T_slp, -1, tokens_slp.shape[-1])
+                tokens_slp = tokens_slp + self.slp_in_pos_embed.unsqueeze(1) + self.slp_time_embed
+                tokens_slp = tokens_slp.reshape(B, -1, tokens_slp.shape[-1])
+        else:
+            if self.use_sst_in:
+                tokens_sst = self.sst_embed(x_sst) + self.sst_pos_embed
+            if self.use_slp_in:
+                tokens_slp = self.slp_in_embed(x_slp) + self.slp_in_pos_embed
 
         if self.use_sst_in and self.use_slp_in:
-            tokens_sst = self.sst_embed(x_sst) + self.sst_pos_embed # -> (B, num_patches_sst, embed_dim)
-            tokens_slp = self.slp_in_embed(x_slp) + self.slp_in_pos_embed # -> (B, num_patches_slp, embed_dim)
-            tokens = torch.cat((tokens_sst, tokens_slp), dim=1) # -> (B, num_patches_total, embed_dim)
+            tokens = torch.cat((tokens_sst, tokens_slp), dim=1)
         elif self.use_sst_in:
-            tokens_sst = self.sst_embed(x_sst) + self.sst_pos_embed
             tokens = tokens_sst
         elif self.use_slp_in:
-            tokens_slp = self.slp_in_embed(x_slp) + self.slp_in_pos_embed
             tokens = tokens_slp
             
         tokens = self.pos_drop(tokens)
         memory = self.encoder(tokens) 
 
-        # 2. PHASE DECODEUR
+        # --- 2. PHASE DECODEUR ---
         queries = self.slp_queries.expand(B, -1, -1) + self.slp_pos_embed
         dec_out = self.decoder(tgt=queries, memory=memory) 
 
-        # 3. RECONSTRUCTION
+        # --- 3. RECONSTRUCTION ---
         out_pixels = self.head(dec_out) 
         
         H_grid, W_grid = self.slp_grid_H, self.slp_grid_W
         pH, pW = self.patch_size_slp
-        out_map = out_pixels.view(B, H_grid, W_grid, 1, pH, pW)
-        out_map = out_map.permute(0, 3, 1, 4, 2, 5).contiguous()
-        padded_img = out_map.view(B, 1, H_grid * pH, W_grid * pW)
         
+        # Réarrangement pour séparer les canaux de quantiles et les dimensions spatiales
+        out_map = out_pixels.view(B, H_grid, W_grid, self.out_chans, pH, pW)
+        out_map = out_map.permute(0, 3, 1, 4, 2, 5).contiguous()
+        padded_img = out_map.view(B, self.out_chans, H_grid * pH, W_grid * pW)
+        
+        # Découpage final aux dimensions cibles exactes -> shape: (B, out_chans, H, W)
         final_slp = padded_img[:, :, :self.target_slp_size[0], :self.target_slp_size[1]]
-        return final_slp
+        return final_slp.contiguous()
 
 # ============================================================
 # 2. ViT basé sur le code de Clara pour prédire PC1

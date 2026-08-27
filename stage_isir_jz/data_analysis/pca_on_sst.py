@@ -171,24 +171,60 @@ def plot_pca_reconstructions(y_true_flat, y_recon_flat, time_list, shape_2d, out
     plt.savefig(os.path.join(outdir, "pca_reconstructions.png"), dpi=150)
     plt.close()
 
-def plot_explained_variance(ipca, outdir):
+def plot_explained_variance(ipca, outdir, val_curves=None):
     """
-    Remplace la courbe de 'loss'. Affiche la variance expliquée cumulative.
+    Plots the cumulative explained variance of the PCA for Train and Validation sets.
+    Optimized to handle perfectly overlapping curves smoothly.
     """
-    plt.figure(figsize=(8, 5))
-    cumulative_variance = np.cumsum(ipca.explained_variance_ratio_)
+    plt.style.use('seaborn-v0_8-whitegrid') 
     
-    plt.plot(range(1, len(cumulative_variance) + 1), cumulative_variance, marker='o', linestyle='-', markersize=4)
-    plt.axhline(y=0.90, color='r', linestyle='--', label='90% Variance Expliquée')
-    plt.xlabel('Nombre de composantes principales (Latent Dim)')
-    plt.ylabel('Variance expliquée cumulative')
-    plt.title('Variance expliquée par la PCA')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    fig, ax = plt.subplots(figsize=(9, 6), dpi=300)
+    
+    # Train cumulative variance
+    cumulative_variance = np.cumsum(ipca.explained_variance_ratio_)
+    components = np.arange(1, len(cumulative_variance) + 1)
+    
+    # Courbe d'entraînement : Épaisse et semi-transparente pour servir de fond
+    ax.plot(components, cumulative_variance, color='#1f77b4', 
+            linestyle='-', linewidth=5, alpha=0.4, label='Train (87 Members)')
+    
+    # Remplissage très léger sous la courbe
+    ax.fill_between(components, cumulative_variance, color='#1f77b4', alpha=0.05)
+    
+    # Courbes de validation : Lignes plus fines, styles distincts, SANS marqueurs
+    if val_curves:
+        colors = ['#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+        linestyles = ['--', '-.'] # Alternance tirets et point-tirets
+        
+        for i, (member, cum_var) in enumerate(val_curves.items()):
+            color = colors[i % len(colors)]
+            linestyle = linestyles[i % len(linestyles)]
+            
+            ax.plot(components, cum_var, color=color, 
+                    linestyle=linestyle, linewidth=2, 
+                    label=f'Validation (Member {member})')
+
+    # Titres et labels
+    ax.set_xlabel('Number of Principal Components', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Cumulative Explained Variance Ratio', fontsize=12, fontweight='bold')
+    ax.set_title('PCA Cumulative Explained Variance', fontsize=14, fontweight='bold', pad=15)
+    
+    # Ajustements des axes
+    # On ajuste le Y minimum dynamiquement pour couper l'espace blanc
+    min_y = min(cumulative_variance[0], 0.3)
+    ax.set_ylim(bottom=min_y, top=1.02)
+    ax.set_xlim(0, len(cumulative_variance) + 1)
+    
+    # Grille plus discrète
+    ax.grid(True, alpha=0.3, linestyle='--')
+    
+    # Légende épurée
+    ax.legend(loc='lower right', fontsize=11, frameon=True, shadow=True, borderpad=1)
     
     plt.tight_layout()
-    plt.savefig(os.path.join(outdir, 'Fig_explained_variance.png'))
+    plt.savefig(os.path.join(outdir, 'Fig_explained_variance_with_val.png'), dpi=300, bbox_inches='tight')
     plt.close()
+    print(f"--> Graphique de variance expliquée épuré sauvegardé.")
 
 
 def plot_eof_patterns(ipca, shape_2d, outdir, n_eofs=10,wgts_flat = None,sst_std=1.0,roll_sst=False):
@@ -227,9 +263,9 @@ def plot_eof_patterns(ipca, shape_2d, outdir, n_eofs=10,wgts_flat = None,sst_std
         vlim = np.max(np.abs(eof_map)) 
         
         im = axes[i].imshow(eof_map, cmap='RdBu_r', origin='lower', vmin=-vlim, vmax=vlim, transform=ccrs.PlateCarree(), extent=extent_sst)
-        axes[i].set_title(f"EOF {i+1} ({var_exp[i]:.1f}% var. expliquée)")
-        cbar = fig.colorbar(im, ax=axes[i], fraction=0.046, pad=0.04)
-        cbar.set_label('Anomalie SST (°C)')
+        axes[i].set_title(f"EOF {i+1} ({var_exp[i]:.1f}% Expl. Var.)", fontsize=12, fontweight='bold', pad=10)
+        cbar = fig.colorbar(im, ax=axes[i], fraction=0.046, pad=0.04, shrink=0.5)
+        cbar.set_label('SST Anomaly (K)')
 
         axes[i].coastlines()
         axes[i].set_extent(extent_sst, crs=ccrs.PlateCarree())
@@ -268,12 +304,12 @@ if __name__ == "__main__":
     duree_lissage = args.duree_lissage
     monthly_reduction = args.monthly_reduction
     lat_weight = args.lat_weight
-    train_members_87 = ['1041.003', '1061.004', '1081.005', '1101.006', '1121.007', '1141.008', '1161.009', '1181.010', '1231.001', '1231.002', '1231.003', '1231.004', '1231.005', '1231.006', '1231.007', '1231.008', '1231.009', '1231.010', '1231.011', '1231.012', '1231.013', '1231.014', '1231.015', '1231.016', '1231.017', '1231.018', '1231.019', '1231.020', '1251.001', '1251.002', '1251.003', '1251.004', '1251.005', '1251.006', '1251.007', '1251.008', '1251.009', '1251.010', '1251.011', '1251.012', '1251.013', '1251.014', '1251.015', '1251.016', '1251.017', '1251.018', '1251.019', '1251.020', '1281.001', '1281.002', '1281.003', '1281.004', '1281.005', '1281.006', '1281.007', '1281.008', '1281.009', '1281.010', '1281.011', '1281.012', '1281.013', '1281.014', '1281.015', '1281.016', '1281.017', '1281.018', '1281.019', '1281.020', '1301.001', '1301.002', '1301.003', '1301.004', '1301.005', '1301.006', '1301.007', '1301.008', '1301.009', '1301.010', '1301.011', '1301.012', '1301.013', '1301.014', '1301.015', '1301.016', '1301.017', '1301.018', '1301.019', '1301.020']
+    train_members_87 = ['1061.004', '1081.005', '1101.006', '1121.007', '1141.008', '1161.009', '1181.010', '1231.001', '1231.002', '1231.003', '1231.004', '1231.005', '1231.006', '1231.007', '1231.008', '1231.009', '1231.010', '1231.011', '1231.012', '1231.013', '1231.014', '1231.015', '1231.016', '1231.017', '1231.018', '1231.019', '1231.020', '1251.001', '1251.002', '1251.003', '1251.004', '1251.005', '1251.006', '1251.007', '1251.008', '1251.009', '1251.010', '1251.011', '1251.012', '1251.013', '1251.014', '1251.015', '1251.016', '1251.017', '1251.018', '1251.019', '1251.020', '1281.001', '1281.002', '1281.003', '1281.004', '1281.005', '1281.006', '1281.007', '1281.008', '1281.009', '1281.010', '1281.011', '1281.012', '1281.013', '1281.014', '1281.015', '1281.016', '1281.017', '1281.018', '1281.019', '1281.020', '1301.001', '1301.002', '1301.003', '1301.004', '1301.005', '1301.006', '1301.007', '1301.008', '1301.009', '1301.010', '1301.011', '1301.012', '1301.013', '1301.014', '1301.015', '1301.016', '1301.017', '1301.018', '1301.019', '1301.020']
 
 
     nb_members_train = 87
     train_members = train_members_87[:nb_members_train]
-    val_members = ['1001.001']
+    val_members = ['1001.001','1041.003']
 
     winter_months = args.winter_months # NDJF
     months_label = "_".join(map(str, winter_months))
@@ -354,8 +390,10 @@ if __name__ == "__main__":
     val_true_list = []
     val_recon_list = []
     val_dates_list = []
+    
+    # Dictionnaire pour stocker les courbes de variance de chaque membre
+    val_cumulative_variances = {}
 
-    # NOUVEAU : On calcule la somme des cosinus une seule fois avant la boucle
     val_map_weight_sum = None
     if lat_weight and global_wgts_flat is not None:
         val_map_weight_sum = np.sum(global_wgts_flat**2)
@@ -364,15 +402,11 @@ if __name__ == "__main__":
         print(f"Évaluation sur le membre de validation : {member}")
         X_val, dates_val, _, global_wgts_flat = load_member_data(member, path_sst, winter_months, duree_lissage=duree_lissage, monthly_reduction=monthly_reduction,lat_weight=lat_weight,sst_std=dynamic_sst_std, roll_sst=args.roll_sst)
         
-        # Encodage (Projection dans l'espace latent) : shape (N, 128)
+        # 1. Évaluation de la Loss totale (ton code actuel)
         latent_vectors = ipca.transform(X_val)
-        
-        # Décodage (Reconstruction depuis l'espace latent) : shape (N, 53*113)
         X_val_recon = ipca.inverse_transform(latent_vectors)
-        
         squared_diff = (X_val - X_val_recon)**2
         
-        # Utilisation de la constante pour la MSE
         if lat_weight and val_map_weight_sum is not None:
             n_samples = X_val.shape[0]
             total_weight = n_samples * val_map_weight_sum
@@ -381,44 +415,46 @@ if __name__ == "__main__":
             mse = np.mean(squared_diff)
         print(f"MSE de reconstruction sur la validation : {mse:.4f}")
 
+        # 2. CALCUL DE LA VARIANCE EXPLIQUÉE POUR CHAQUE COMPOSANTE SUR LA VALIDATION
+        # Formule du R2 score : 1 - (SSE / SST)
+        print(f"Calcul de la variance expliquée cumulative pour {member}...")
+        
+        # Variance totale (SST) du membre autour de la moyenne globale du modèle
+        X_val_centered = X_val - ipca.mean_
+        sst = np.sum(X_val_centered**2) 
+        
+        cum_var_member = []
+        for k in range(1, ipca.n_components + 1):
+            # On isole les k premières composantes latentes (le reste est mis à zéro)
+            Z_k = np.zeros_like(latent_vectors)
+            Z_k[:, :k] = latent_vectors[:, :k]
+            
+            # On reconstruit à partir de ces k composantes
+            X_recon_k = ipca.inverse_transform(Z_k)
+            
+            # Somme des erreurs au carré (SSE) pour k composantes
+            sse = np.sum((X_val - X_recon_k)**2)
+            
+            # Variance expliquée (équivalent au score R2 multivarié)
+            explained_var = 1.0 - (sse / sst)
+            cum_var_member.append(explained_var)
+            
+        val_cumulative_variances[member] = cum_var_member
+
+        # 3. Stockage pour les cartes
         val_true_list.append(X_val)
         val_recon_list.append(X_val_recon)
         val_dates_list.extend(dates_val)
 
-    # Concaténation pour le plot
+    # Concaténation pour le plot spatial
     y_true_all = np.concatenate(val_true_list, axis=0)
     y_recon_all = np.concatenate(val_recon_list, axis=0)
 
-    # Plot des reconstructions
+    # Plot des reconstructions spatiales
     plot_pca_reconstructions(y_true_all, y_recon_all, val_dates_list, shape_2d, outdir, latent_dim=latent_dim, monthly_reduction=monthly_reduction, wgts_flat=global_wgts_flat, roll_sst=args.roll_sst)
 
-    # 1. Récupération directe (zéro temps de calcul)
-    variance_par_composante = ipca.explained_variance_ratio_
-    variance_cumulative = np.cumsum(variance_par_composante)
-
-    # 2. Création de la figure
-    plt.figure(figsize=(10, 6))
-
-    # Courbe 1 : La variance expliquée cumulée (en rouge)
-    plt.plot(range(1, latent_dim + 1), variance_cumulative, 
-            label='Variance cumulative', color='red', marker='o', markersize=3)
-
-    # Courbe 2 (Barres) : La variance expliquée par chaque composante (en bleu)
-    plt.bar(range(1, latent_dim + 1), variance_par_composante, 
-            alpha=0.5, align='center', label='Variance par composante')
-
-    # Ligne de repère (ex: objectif de 90% d'information gardée)
-    plt.axhline(y=0.90, color='black', linestyle='--', label='Seuil de 90%')
-
-    plt.xlabel('Nombre de composantes principales (Latent Dim)')
-    plt.ylabel('Ratio de variance expliquée')
-    plt.title('Évolution de la variance expliquée en fonction du nombre de composantes')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(outdir, 'variance_expliquee.png'), dpi=150)
-    plt.close()
+    # GÉNÉRATION DU NOUVEAU PLOT COMBINÉ
+    plot_explained_variance(ipca, outdir, val_curves=val_cumulative_variances)
 
     elapsed_time = (time.time() - start_time) / 60
     print(f"\nExécution complète en {elapsed_time:.2f} minutes.")

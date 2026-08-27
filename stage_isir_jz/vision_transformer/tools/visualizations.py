@@ -547,6 +547,101 @@ def plot_and_save_maps_with_reconstruction_light(slp_true_list, slp_recon_true_l
     plt.savefig(os.path.join(outdir, filename), dpi=150)
     plt.close()
 
+def plot_and_save_maps_light(
+    slp_true_list,
+    slp_pred_list,
+    time_list,
+    outdir,
+    epoch=None,
+    max_plots=30,
+    extent_slp=[-80, 32, 20, 72],
+):
+    """Génère une figure à 2 colonnes : 1. Vraie SLP | 2. SLP Prédite par le ViT.
+
+    Version allégée (sans moyennage) pour le monitoring d'entraînement du ViT Direct.
+    On trace uniquement les échantillons préalablement filtrés par target_indices dans la boucle.
+    """
+    if not slp_true_list or not slp_pred_list:
+        print("⚠️ Aucun échantillon à tracer pour plot_and_save_maps_light.")
+        return
+
+    # 1. Concaténation
+    slp_true = np.concatenate(slp_true_list, axis=0)
+    slp_pred = np.concatenate(slp_pred_list, axis=0)
+
+    # Nettoyage des dimensions (ex: [batch, 1, H, W] -> [batch, H, W])
+    if slp_true.ndim == 4:
+        slp_true = slp_true.squeeze(1)
+    if slp_pred.ndim == 4:
+        slp_pred = slp_pred.squeeze(1)
+
+    # 2. Déterminer combien de cartes on va tracer
+    N = slp_true.shape[0]
+    num_samples = min(N, max_plots)
+
+    if num_samples == 0:
+        return
+
+    fig, axes = plt.subplots(
+        num_samples,
+        2,
+        figsize=(12, 3.5 * num_samples),
+        subplot_kw={"projection": ccrs.PlateCarree()},
+    )
+
+    epoch_str = f" (Epoch {epoch})" if epoch is not None else " (Final)"
+    fig.suptitle(
+        f"Reconstruction de la SLP par le ViT Direct{epoch_str}",
+        fontsize=16,
+        y=0.98,
+    )
+
+    # Gestion propre si on n'a qu'une seule ligne (1 seul plot)
+    if num_samples == 1:
+        axes = [axes]
+
+    for i in range(num_samples):
+        date = time_list[i]
+        vmin, vmax = -2.0, 2.0  # Ajustable selon la normalisation de tes anomalies
+        ax_row = axes[i]
+
+        # Colonne 1 : La Réalité
+        im1 = ax_row[0].imshow(
+            slp_true[i],
+            cmap="RdBu_r",
+            origin="lower",
+            vmin=vmin,
+            vmax=vmax,
+            transform=ccrs.PlateCarree(),
+            extent=extent_slp,
+        )
+        ax_row[0].set_title(f"1. Vraie SLP\n{date}")
+        ax_row[0].coastlines()
+        fig.colorbar(im1, ax=ax_row[0], fraction=0.046, pad=0.04)
+
+        # Colonne 2 : Prédiction du ViT
+        im2 = ax_row[1].imshow(
+            slp_pred[i],
+            cmap="RdBu_r",
+            origin="lower",
+            vmin=vmin,
+            vmax=vmax,
+            transform=ccrs.PlateCarree(),
+            extent=extent_slp,
+        )
+        ax_row[1].set_title("2. Prédiction Modèle\n(SST -> ViT -> SLP)")
+        ax_row[1].coastlines()
+        fig.colorbar(im2, ax=ax_row[1], fraction=0.046, pad=0.04)
+
+    plt.tight_layout(rect=[0, 0.02, 1, 0.96])
+
+    filename = (
+        f"val_maps_epoch_{epoch}.png"
+        if epoch is not None
+        else "val_maps_final.png"
+    )
+    plt.savefig(os.path.join(outdir, filename), dpi=150)
+    plt.close()
 
 
 def plot_reconstruction_check(true_maps, recon_maps, dates, outdir, method_name, num_samples=3):

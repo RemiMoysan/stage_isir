@@ -855,7 +855,7 @@ if __name__ == "__main__":
             
             loss_figure(len(train_losses), train_losses, val_losses, outdir,epoch_times,per_member_val_losses=val_losses_per_member_history,test_losses=test_losses)
             plot_correlation_evolution(train_corrs, val_corrs,outdir,test_corrs = test_corrs, val_ks=val_ks, test_ks=test_ks, train_ks=train_ks)
-            plot_r2_R2_evolution(train_corrs, val_corrs, train_R2, val_R2, outdir,test_R2 = test_R2)
+            plot_r2_R2_evolution(train_corrs, val_corrs, train_R2, val_R2, outdir,test_R2 = test_R2,test_corrs = test_corrs)
             print(f"Saved checkpoint at epoch {epoch + 1}")
             
             for mem, d in per_member_plots.items():

@@ -1,0 +1,83 @@
+#!/bin/bash
+#SBATCH --job-name=optunaNAO      # Nom du job
+#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/linear_models/log/linear_models_%j.out
+#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/linear_models/log/linear_models_%j.out
+#SBATCH --partition=gpu_p6           # <-- CORRIGÉ : Partition H100
+#SBATCH -C h100                      # Force la carte H100
+#SBATCH --time=01:00:00              # Temps alloué (test rapide)
+#SBATCH --nodes=1                    # 1 seul noeud
+#SBATCH --ntasks=1                   # 1 seule tâche PyTorch
+#SBATCH --gres=gpu:1                 # 1 seul GPU H100
+#SBATCH --cpus-per-task=24           # Max CPU autorisé pour 1 H100 (96/4)
+#SBATCH --hint=nomultithread         # Désactive l'hyperthreading
+#SBATCH --account=uxg@h100           # Ton projet sur H100
+   
+
+
+# 1. Nettoyage de l'environnement
+module purge
+
+# 2. Chargement de l'environnement PyTorch pour H100
+module load arch/h100
+module load pytorch-gpu/py3/2.5.1    # <-- CORRIGÉ : Version supportant Hopper
+export PYTHONUSERBASE=$WORK/.local_vit_h100 
+
+# 3. Déplacement dans ton répertoire de travail
+cd $WORK/stage_isir_jz/linear_models/
+
+# --- DÉBUT DES AJOUTS POUR LE MONITORING ---
+mkdir -p log
+
+LOG_GPU="log/gpu_usage_${SLURM_JOB_ID}.log"
+LOG_CPU="log/cpu_usage_${SLURM_JOB_ID}.log"
+
+echo "Début du monitoring. Fichiers : $LOG_GPU et $LOG_CPU"
+
+nvidia-smi --query-gpu=timestamp,utilization.gpu,utilization.memory,memory.used --format=csv -l 300 > $LOG_GPU &
+PID_GPU=$!
+
+(while true; do 
+    echo "$(date) | CPU: $(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')% | RAM: $(free -h | grep Mem | awk '{print $3}') used" >> $LOG_CPU; 
+    sleep 300; 
+done) &
+PID_CPU=$!
+# --- FIN DES AJOUTS POUR LE MONITORING ---
+
+#     --include_lag1 \
+#     --fixed_seed 1 \
+
+
+
+# 4. Lancement de ton script Python
+srun python main_with_shap.py \
+    --lat_weight \
+    --nb_epochs 20 \
+    --nb_intra_evals 15 \
+    --winter_months 2 \
+    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/monthly_reduction/lat_weightTrue/IPCA_latent128_winter_months_11_12_1_2_87members_normalizeFalse_monthly_reduction_wgtTrue_slp_std467.2/best_pca_model.joblib" \
+    --embed_path_sst "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_sst/IPCA_latent128_winter_months_8_9_10_11_12_1_2_87members_normalizeFalse_monthly_reduction_wgtTrue_sst_std0.55_roll_sstTrue/best_pca_model.joblib" \
+    --latent_dim 1 \
+    --machine jean-zay-work \
+    --roll_sst \
+    --bs 64 \
+    --lr 0.0028016696636725073 \
+    --weight_decay 6.367166783894318e-05 \
+    --noise_std 0.002973239813596766 \
+    --gradient_clip 328.1023491219133 \
+    --alpha_l1 0.010244673813226675 \
+    --loss_type mse \
+    --input_format pca \
+    --sst_pca_dim 114 \
+    --sst_lags_months 1 2 \
+    --slp_lags_months \
+    --nb_members_train 87 \
+    --force_val_members 1251.002 \
+    --force_test_members 1081.005 \
+    --nb_members_test 1 \
+    --seed 1 \
+    --monthly_reduction \
+    --update 0
+    
+# 5. NETTOYAGE INDISPENSABLE
+kill $PID_GPU $PID_CPU
+echo "Entraînement et monitoring terminés."
