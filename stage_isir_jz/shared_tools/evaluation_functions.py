@@ -89,7 +89,7 @@ def plot_attribution_maps(mean_attr_array, lags, extent, display_title, filename
 
 def generate_summary_plots(shap_np, inputs_np, lags, extent, outdir, display_name, file_prefix, time_unit, pc1_std):
     shap_norm = shap_np / pc1_std
-    inputs_k = inputs_np * 0.707  # Conversion en Kelvin
+    inputs_k = inputs_np * 0.707  # Conversion en Kelvin. Std de la SST hardcodé, peut être un peu différente si on charge un dataset en forçant une std différente de celle par défaut...
     
     mean_abs_shap = np.mean(np.abs(shap_norm), axis=0)
     plot_attribution_maps(mean_abs_shap, lags, extent, f"Absolute Importance - {display_name}", f"Importance_Absolue_{file_prefix}", outdir, "SST", negative_value=False, time_unit=time_unit, cbar_label="SHAP (Unitless)")
@@ -397,9 +397,6 @@ def plot_combined_pcs_time_series(df_month, stats_per_pc, stats_global, month_nu
         # Moins d'espace vide en haut pour un seul plot
         fig.subplots_adjust(top=0.88, bottom=0.18)
 
-    # Légende repositionnée pour éviter de sortir du cadre si top est grand
-    # fig.legend(loc="upper right", bbox_to_anchor=(0.99, 0.99), ncol=3, fontsize=10)
-        # On accroche la légende au coin supérieur droit du premier sous-graphique
     axes[0].legend(loc="upper right", ncol=3, fontsize=10, framealpha=0.9)
 
     os.makedirs(outdir, exist_ok=True)
@@ -832,7 +829,7 @@ def stats(pcs_true, pcs_pred, n_iterations):
         vectorize=True, kwargs={"n_iterations": n_iterations}, output_dtypes=[float]
     )
     
-    # NOUVEAU : P-value pour SS_L1
+    # P-value pour SS_L1
     pval_ss_l1 = xr.apply_ufunc(
         bootstrap_ss_l1, pcs_true, pcs_pred,
         input_core_dims=[["time"], ["time"]], output_core_dims=[[]],
@@ -844,8 +841,7 @@ def stats(pcs_true, pcs_pred, n_iterations):
     rmse = np.sqrt(((pcs_true - pcs_pred)**2).mean(dim='time'))
     nrmse = rmse / std_true
     r2 = 1 - nrmse**2 
-    
-    # NOUVEAU : Calcul natif du SS_L1 sur Xarray
+
     mae = np.abs(pcs_true - pcs_pred).mean(dim='time')
     mae_ref = np.abs(pcs_true).mean(dim='time')
     ss_l1 = 1 - (mae / mae_ref)

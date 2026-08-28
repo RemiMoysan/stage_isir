@@ -447,6 +447,7 @@ def evaluate_and_loocv_pls(
     generate_1d_loocv_barplot(all_members, df_scores["PLS1_NAO"].values, outdir, "NAO Explained Variance (PLS1 $\\rightarrow$ NAO)")
     generate_1d_loocv_barplot(all_members, df_scores["Multi-PLS1_PCA"].values, outdir, "SLP Spatial Explained Variance (Multi-PLS1 $\\rightarrow$ PCA)")
     generate_1d_loocv_barplot(all_members, df_scores["PLS2_Pix"].values, outdir, "SLP Spatial Explained Variance (PLS2 $\\rightarrow$ PIXELS)")
+    
 # ============================================================
 # 4. SCRIPT PRINCIPAL
 # ============================================================

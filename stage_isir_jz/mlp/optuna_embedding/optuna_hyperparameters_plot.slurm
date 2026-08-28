@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=mcafinal      # Nom du job
-#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/mcafinal_slp_%j.out          # Fichier de sortie standard (%j = numéro du job)
-#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/log/mcafinal_slp_%j.out           # Fichier d'erreur (fusionné avec la sortie)
+#SBATCH --job-name=optuna_plots      # Nom du job
+#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_with_slp_embedding/optuna_embedding/log/optunaplots_%j.out
+#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_with_slp_embedding/optuna_embedding/log/optunaplots_%j.out
 #SBATCH -A uxg@cpu                     # Allocation du projet (uxg) sur les heures CPU
 #SBATCH --partition=prepost
-#SBATCH --time=10:00:00                  # Temps d'exécution 
+#SBATCH --time=1:00:00                  # Temps d'exécution 
 #SBATCH --nodes=1                        # Un seul nœud de calcul
 #SBATCH --ntasks=1                       # Une seule tâche
 #SBATCH --cpus-per-task=10               # 10 cœurs pour accélérer Numpy/Scikit-learn
@@ -15,28 +15,17 @@ module purge
 
 # 2. Chargement du module Python/PyTorch
 # (On charge le même module que d'habitude pour avoir tes paquets, il marchera très bien sur CPU)
-module load pytorch-gpu/py3/2.0.0
+module load arch/h100
+module load pytorch-gpu/py3/2.5.1
 
 # 3. Activation de ton environnement local (pour cftime, netCDF4, eofs, cartopy)
 export PYTHONUSERBASE=$WORK/.local_vit_v100
 
 # 4. Déplacement dans ton dossier de travail
 # (À adapter avec le nom exact du dossier où se trouve ton script python)
-cd $WORK/stage_isir_jz/data_analysis/
+cd $WORK/stage_isir_jz/shared_tools
 
 # 5. Exécution du code
-
-# --monthly_reduction
-# --lat_weight
-
-srun python mca_loocv_final.py \
-    --machine jean-zay-work \
-    --duree_lissage 0 \
-    --sst_lags 1 2 3 \
-    --roll_sst \
-    --monthly_reduction \
-    --lat_weight \
-    --winter_months 11 \
-    --nb_val 5 \
-    --max_modes_in 400 \
-    --max_modes_out 400
+srun python optuna_hyperparameters_plot.py \
+    --storage-name stage_isir_jz/mlp/optuna_embedding/Optuna_MLP_R2_m2_ep20ie15pat5val5lag1TrueseqTruerollTruelatwTrue_FIXED_seed1_lossmse_optuna_s150p50_2i3/optuna.db \
+    --n-best 10

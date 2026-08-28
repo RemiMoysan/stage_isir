@@ -124,8 +124,7 @@ def generate_master_reference(member_ids, sst_lags, slp_lags, winter_months,dure
     sums = {k: {key: 0 for key in all_keys} for k in sorted_groups}
     sums_sq = {k: {key: 0 for key in all_keys} for k in sorted_groups} 
     valid_counts = {k: {key: 0 for key in all_keys} for k in sorted_groups}
-    
-    # NOUVEAU : Accumulateurs par membre pour générer les heatmaps détaillées
+
     mem_sums = {mem: {k: {key: 0 for key in all_keys} for k in sorted_groups} for mem in member_ids}
     mem_valid_counts = {mem: {k: {key: 0 for key in all_keys} for k in sorted_groups} for mem in member_ids}
 
@@ -548,10 +547,6 @@ def generate_master_reference(member_ids, sst_lags, slp_lags, winter_months,dure
         fig_row_snr.savefig(f"{dir_gif_snr}/Row_{i:02d}_{group_names[i]}_SNR.png", dpi=150, bbox_inches='tight')
         plt.close(fig_row_snr)
 
-
-    # =========================================================================
-    # HEATMAPS 2D PAR MEMBRE ET PAR LAG (Barplot Agrégé + Heatmap Détaillée)
-    # =========================================================================
     # =========================================================================
     # HEATMAPS 2D PAR MEMBRE ET PAR LAG (Énergie Totale & Projection Spatiale)
     # =========================================================================

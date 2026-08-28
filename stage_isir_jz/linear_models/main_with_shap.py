@@ -243,7 +243,6 @@ if __name__ == "__main__":
     model = LinearRegressionPredictor(in_features=in_features_sst + in_features_slp, out_dim=out_features).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-    # Fonction utilitaire de formatage (Identique LOOCV)
     def format_inputs(X_sst, X_slp):
         B, L, H, W = X_sst.shape
         if args.input_format == 'pca':
@@ -670,7 +669,7 @@ if __name__ == "__main__":
         if patience_counter >= patience:
             break
         
-        # ---------------- AFFICHAGE CHAK 2 EPOCHS ----------------
+        # ---------------- AFFICHAGE  ----------------
         if (epoch + 1) % 2 == 0:
             state = {'state_dict': model.state_dict(), 'optimizer': optimizer.state_dict(), 'train_losses': train_losses, 'val_losses': val_losses, 'test_losses': test_losses}
             torch.save(state, f'{outdir}/final_model_LinReg.pth')
@@ -881,7 +880,6 @@ if __name__ == "__main__":
             # ---------------- DIAGNOSTICS SST ----------------
             if len(sst_lags) > 0:
                 sst_w_raw = sst_weights_spat[comp_idx].reshape(len(sst_lags), sst_shape[0], sst_shape[1])
-                # Correction du reshape pour prendre en compte le nombre de lags
                 sst_w_eff = sst_w_raw * sst_std.reshape(len(sst_lags), sst_shape[0], sst_shape[1])
                 sst_w_norm = sst_w_eff / target_std_val  # Impact Typique en Sigmas
                 
@@ -904,7 +902,6 @@ if __name__ == "__main__":
             # ---------------- DIAGNOSTICS SLP ----------------
             if len(slp_lags) > 0:
                 slp_w_raw = slp_weights_spat[comp_idx].reshape(len(slp_lags), slp_shape[0], slp_shape[1])
-                # Correction du reshape pour prendre en compte le nombre de lags
                 slp_w_eff = slp_w_raw * slp_std.reshape(len(slp_lags), slp_shape[0], slp_shape[1])
                 slp_w_norm = slp_w_eff / target_std_val 
                 

@@ -25,7 +25,7 @@ if parent_dir not in sys.path:
 
 from shared_tools.datasets import Dataset, Dataset_mensuel
 from shared_tools.models import ConvVAE
-# Importation stricte des fonctions d'évaluation et de tracé cartographique du CNN
+
 from shared_tools.evaluation_functions import (
     plot_spatial_timeseries_raw_metrics, 
     plot_metric_with_pvalue_map, 
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument('--loss_type', type=str, choices=['mse', 'l1', 'quantile','correlation'], default='mse')
     parser.add_argument('--quantiles', type=float, nargs='+', default=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
 
-    # --- NOUVEAU : ARGUMENTS TUNABLES DU VIT ---
+    # --- ARGUMENTS TUNABLES DU VIT ---
     parser.add_argument('--dr', type=float, default=0.1)
     parser.add_argument('--embed_dim', type=int, default=128)
     parser.add_argument('--depth', type=int, default=4)

@@ -23,7 +23,6 @@ if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
 from tools.datasets import Dataset
-# IMPORT MODIFIÉ : On importe le ViT latent et l'extracteur de médiane
 from tools.models import ViT_Latent_SLP_Multimodal, get_median_prediction
 
 # ============================================================

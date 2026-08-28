@@ -46,7 +46,6 @@ class ResBlock1D(nn.Module):
             nn.Linear(dim, dim)
         )
     def forward(self, x):
-        # L'addition est pure, pas d'activation après !
         return x + self.net(x)
 
 class AdvancedEmbeddingPredictor(nn.Module):
@@ -186,7 +185,6 @@ def objective(trial):
         exp = trial.suggest_int("bs_exp", 5, 8)
         bs = int(2**exp)
 
-    # Nouveaux hyperparamètres Non-Linéaires
     lr = args.lr if args.lr is not None else trial.suggest_float("lr", 1e-5, 5e-3, log=True)
     weight_decay = args.weight_decay if args.weight_decay is not None else trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
     noise_std = args.noise_std if args.noise_std is not None else trial.suggest_float("noise_std", 1e-4, 1e-1, log=True)

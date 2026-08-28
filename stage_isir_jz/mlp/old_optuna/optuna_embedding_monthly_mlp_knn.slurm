@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=optunaNAO     # Nom du job
-#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_with_slp_embedding/optuna_embedding/log/loocv_%j.out
-#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_with_slp_embedding/optuna_embedding/log/loocv_%j.out
+#SBATCH --job-name=optuna_monthly      # Nom du job
+#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/embedding_2_embedding/optuna/log/optuna_%j.out
+#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/embedding_2_embedding/optuna/log/optuna_%j.out
 #SBATCH --partition=gpu_p6           # <-- CORRIGÉ : Partition H100
 #SBATCH -C h100                      # Force la carte H100
 #SBATCH --time=20:00:00              # Temps alloué (test rapide)
@@ -10,7 +10,7 @@
 #SBATCH --gres=gpu:1                 # 1 seul GPU H100
 #SBATCH --cpus-per-task=24           # Max CPU autorisé pour 1 H100 (96/4)
 #SBATCH --hint=nomultithread         # Désactive l'hyperthreading
-#SBATCH --account=uxg@h100           # Ton projet sur H100
+#SBATCH --account=knn@h100           # Ton projet sur H100
    
 
 
@@ -23,7 +23,7 @@ module load pytorch-gpu/py3/2.5.1    # <-- CORRIGÉ : Version supportant Hopper
 export PYTHONUSERBASE=$WORK/.local_vit_h100 
 
 # 3. Déplacement dans ton répertoire de travail
-cd $WORK/stage_isir_jz/cnn/cnn_with_slp_embedding/optuna_embedding/
+cd $WORK/stage_isir_jz/embedding_2_embedding/optuna/
 
 # --- DÉBUT DES AJOUTS POUR LE MONITORING ---
 mkdir -p log
@@ -43,49 +43,34 @@ done) &
 PID_CPU=$!
 # --- FIN DES AJOUTS POUR LE MONITORING ---
 
-#     --include_lag1 \
-#     --fixed_seed 1 \
+# --include_lag1 \
+
+
 
 # 4. Lancement de ton script Python
-srun python optuna_cross_loocv.py \
-    --optimize_metric R2 \
-    --lat_weight \
-    --nb_epochs 20 \
+srun python optuna_embedding_monthly_mlp.py \
+    --n_trials 500 \
+    --n_startup_trials_tpe 100 \
+    --n_startup_trials_pruner 25 \
+    --n_warmup_steps 3 \
+    --interval_steps 1 \
+    --optimize_metric r2 \
+    --embed_path_slp "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/monthly_reduction/IPCA_latent1_winter_months_2_87members_normalizeTrue_monthly_reduction_wgtFalse_slp_std575.01/best_pca_model.joblib" \
+    --embed_path_sst "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_sst/monthly_reduction/IPCA_latent128_winter_months_2_87members_normalizeTrue_monthly_reduction_wgtFalse_sst_std0.51_roll_sstTrue/best_pca_model.joblib" \
+    --machine jean-zay-work \
+    --nb_members_val 2 \
     --patience 5 \
-    --nb_intra_evals 15 \
-    --winter_months 1 \
-    --embed_method pca \
-    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/monthly_reduction/lat_weightTrue/IPCA_latent128_winter_months_11_12_1_2_87members_normalizeFalse_monthly_reduction_wgtTrue_slp_std467.2/best_pca_model.joblib" \
+    --seed 1 \
     --latent_dim 1 \
+    --nb_epochs 20 \
+    --winter_months 2 \
     --roll_sst \
-    --include_lag1 \
-    --bs 32 \
-    --lr 0.0003169796471138008 \
-    --dr_conv 0.22558799331452753 \
-    --dr_fc 0.12941244621300624 \
-    --fc_dim 63 \
-    --depth 2 \
-    --n_feat 11 \
-    --filter_mult 1.0 \
-    --pool_type max \
-    --sst_pool_x 2 \
-    --sst_pool_y 3 \
-    --sst_kx 3 \
-    --sst_ky 5 \
-    --activation relu \
-    --pool_strategy progressive \
+    --nb_intra_evals 15 \
     --loss_type mse \
-    --weight_decay 1.4857983284996513e-06 \
-    --noise_std 0.00258079205486086 \
-    --gradient_clip 0.3753647914112859 \
-    --early_fusion_sst \
     --slp_lags_months \
-    --sst_lags_months 1 2 3 4 5
-
-    
+    --sst_lags_months 2 3 4 5 6
 
 
-    
     
 
 

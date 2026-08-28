@@ -268,8 +268,8 @@ if __name__ == "__main__":
             lags=active_sst_lags, 
             extent=extent_sst, 
             outdir=explain_dir, 
-            display_name=f"Component {c+1} (All test members)",  # Le beau titre 
-            file_prefix=f"Dim_{c+1}_ALL",                          # Le nom pour le fichier
+            display_name=f"Component {c+1} (All test members)",  
+            file_prefix=f"Dim_{c+1}_ALL",                     
             time_unit=time_unit, 
             pc1_std=pc1_std
         )
@@ -292,8 +292,8 @@ if __name__ == "__main__":
                     lags=active_sst_lags, 
                     extent=extent_sst, 
                     outdir=mem_dir, 
-                    display_name=f"Component {c+1} (Member {mem})", # Le beau titre
-                    file_prefix=f"Dim_{c+1}",                       # Le nom pour le fichier
+                    display_name=f"Component {c+1} (Member {mem})", 
+                    file_prefix=f"Dim_{c+1}",             
                     time_unit=time_unit, 
                     pc1_std=pc1_std
                 )
@@ -325,7 +325,7 @@ if __name__ == "__main__":
                 outdir=explain_dir,
                 time_unit=time_unit,
                 pc1_std=pc1_std,
-                dynamic_slp_std=dynamic_slp_std  # <--- NOUVEL ARGUMENT
+                dynamic_slp_std=dynamic_slp_std
             )
 
     end_time = time.time()

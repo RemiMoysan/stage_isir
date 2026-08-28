@@ -23,7 +23,7 @@ if project_root_str not in sys.path:
 from shared_tools.datasets import Dataset, Dataset_mensuel
 from shared_tools.models import ConvVAE
 from shared_tools.optuna_loop_helpers import encode_to_latent_gpu
-# Importation stricte des fonctions d'évaluation et de tracé cartographique du CNN
+
 from shared_tools.evaluation_functions import (
     plot_spatial_timeseries_raw_metrics, 
     plot_metric_with_pvalue_map, 

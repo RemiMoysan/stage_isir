@@ -254,7 +254,7 @@ if __name__ == "__main__":
     checkpoint = torch.load(linreg_path, map_location=device)
     base_model.load_state_dict(checkpoint['state_dict'] if 'state_dict' in checkpoint else checkpoint)
 
-    # Initialisation du Wrapper Differentiable
+    # Initialisation du Wrapper
     model = SHAP_LinReg_Wrapper(
         base_model=base_model, loss_type=args.loss_type, quantiles=args.quantiles, latent_dim=args.latent_dim,
         input_format=args.input_format, sst_pca_dim=args.sst_pca_dim, 

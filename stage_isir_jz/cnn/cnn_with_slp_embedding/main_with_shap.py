@@ -55,11 +55,8 @@ if __name__ == "__main__":
     parser.add_argument('--nb_members_train', type=int, default=10, help='Nombre de membres à utiliser pour l\'entraînement')
     parser.add_argument('--nb_members_val', type=int, default=5, help='Nombre de membres à utiliser pour la validation')
     parser.add_argument('--nb_members_test', type=int, default=0, help='Nombre de membres à utiliser pour le test') 
-    
-    # --- NOUVEAUX ARGUMENTS DE FORÇAGE ---
     parser.add_argument('--force_val_members', type=str, nargs='*', default=None, help='Forcer une liste spécifique de membres pour la val')
     parser.add_argument('--force_test_members', type=str, nargs='*', default=None, help='Forcer une liste spécifique de membres pour le test')
-    # -------------------------------------
 
     parser.add_argument('--seed', type=int, default=42, help='Seed pour le mélange inter membres')
     parser.add_argument('--latent_dim', type=int, default=128, help='Dimension de l\'espace latent')
@@ -102,7 +99,6 @@ if __name__ == "__main__":
     parser.add_argument('--sst_pool_y', type=int, default=2, help='Facteur de pooling pour SST en y')
     parser.add_argument('--use_gap', action='store_true', help='Utilise Global Average Pooling')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='Poids de la régularisation L2')
-    # nouvelles régularisations
     parser.add_argument('--noise_std', type=float, default=0.0, help='Écart-type du bruit ajouté aux gradients pour la régularisation')
     parser.add_argument('--gradient_clip', type=float, default=float("inf"), help='Valeur de clipping des gradients pour la régularisation')
 
@@ -154,7 +150,7 @@ if __name__ == "__main__":
     
     all_members = ['1001.001', '1041.003', '1061.004', '1081.005', '1101.006', '1121.007', '1141.008', '1161.009', '1181.010', '1231.001', '1231.002', '1231.003', '1231.004', '1231.005', '1231.006', '1231.007', '1231.008', '1231.009', '1231.010', '1231.011', '1231.012', '1231.013', '1231.014', '1231.015', '1231.016', '1231.017', '1231.018', '1231.019', '1231.020', '1251.001', '1251.002', '1251.003', '1251.004', '1251.005', '1251.006', '1251.007', '1251.008', '1251.009', '1251.010', '1251.011', '1251.012', '1251.013', '1251.014', '1251.015', '1251.016', '1251.017', '1251.018', '1251.019', '1251.020', '1281.001', '1281.002', '1281.003', '1281.004', '1281.005', '1281.006', '1281.007', '1281.008', '1281.009', '1281.010', '1281.011', '1281.012', '1281.013', '1281.014', '1281.015', '1281.016', '1281.017', '1281.018', '1281.019', '1281.020', '1301.001', '1301.002', '1301.003', '1301.004', '1301.005', '1301.006', '1301.007', '1301.008', '1301.009', '1301.010', '1301.011', '1301.012', '1301.013', '1301.014', '1301.015', '1301.016', '1301.017', '1301.018', '1301.019', '1301.020']
     
-    # --- NOUVELLE GESTION DU SPLIT ---
+    # SPLIT MEMBERS INTO TRAIN, VAL, TEST, prise en compte éventuelle des listes forcées
     rng = random.Random(args.seed)
     rng.shuffle(all_members)
     if args.force_val_members is not None or args.force_test_members is not None:
@@ -164,7 +160,6 @@ if __name__ == "__main__":
         remaining = [m for m in all_members if m not in val_members and m not in test_members]
         # On coupe selon nb_members_train dans l'ordre de la seed !
         train_members = remaining[:args.nb_members_train]
-        # Mise à jour des compteurs au cas où des parties du code les utilisent
         nb_members_train = len(train_members)
         nb_members_val = len(val_members)
         nb_members_test = len(test_members)
@@ -707,7 +702,6 @@ if __name__ == "__main__":
 
                         model.train()
 
-        # Finalisation des calculs d'époque Train
         train_loss = running_train_loss / total_train_samples
         train_losses.append(train_loss)
         gn = np.array(epoch_grad_norms)
@@ -722,7 +716,6 @@ if __name__ == "__main__":
         train_lat_gk.append(lat_gK)
         train_lat_gL1.append(lat_gL1)
         train_lat_mL1.append(lat_mL1)
-        # Finalisation et sauvegarde des R^2 spatiaux Train
         map_gR2, map_mR2, map_r2_np, map_sCorr, map_tCorr, map_gCorr, map_corr_np, map_gL1, map_mL1, map_l1_np = train_map_tracker.compute(area_weights=area_weights_2d)
         train_map_gR2.append(map_gR2)
         train_map_mR2.append(map_mR2)
@@ -897,7 +890,6 @@ if __name__ == "__main__":
             map_gR2, map_mR2, map_r2_np, map_sCorr, map_tCorr, map_gCorr, map_corr_np, map_gL1, map_mL1, map_l1_np = eval_map_tracker.compute(area_weights=area_weights_2d)
             
             if key == 'val':
-                # Stockage (exemple pour la phase val)
                 val_map_gR2.append(map_gR2)
                 val_map_mR2.append(map_mR2)
                 val_map_sCorr.append(map_sCorr)
@@ -905,7 +897,6 @@ if __name__ == "__main__":
                 val_map_gCorr.append(map_gCorr)
                 val_map_gL1.append(map_gL1)
                 val_map_mL1.append(map_mL1)
-                # Stockage (exemple pour la phase val)
                 val_lat_gR2.append(lat_gR2)
                 val_lat_mR2.append(lat_mR2)
                 val_lat_gCorr.append(lat_gCorr)
@@ -926,7 +917,6 @@ if __name__ == "__main__":
                 test_map_gCorr.append(map_gCorr)
                 test_map_gL1.append(map_gL1)
                 test_map_mL1.append(map_mL1)
-
                 test_lat_gR2.append(lat_gR2)
                 test_lat_mR2.append(lat_mR2)
                 test_lat_gCorr.append(lat_gCorr)
@@ -962,7 +952,7 @@ if __name__ == "__main__":
             print(f"Early stopping at epoch {epoch + 1} (patience {patience} reached)")
             break
         
-        # ---------------- AFFICHAGE ET SAUVEGARDE CHAK 2 EPOCHS ----------------
+        # ---------------- AFFICHAGE ET SAUVEGARDE ----------------
         if (epoch + 1) % 2 == 0:
             state = {
                 'state_dict': model.state_dict(),
@@ -972,14 +962,14 @@ if __name__ == "__main__":
             torch.save(state, f'{outdir}/final_model_CNN.pth')
             loss_figure(len(train_losses), train_losses, val_losses, outdir, epoch_times, per_member_val_losses=val_losses_per_member_history, test_losses=test_losses)
                         
-            # Plots d'évaluation latente : soit m, soit g
+            # Plots d'évaluation latente 
             plot_r2_R2_evolution(train_lat_mCorr, val_lat_mCorr, train_lat_mR2, val_lat_mR2, outdir, test_R2=test_lat_mR2, test_corrs=test_lat_mCorr, suffix="_Latent_Mean")
             plot_r2_R2_evolution(train_lat_gCorr, val_lat_gCorr, train_lat_gR2, val_lat_gR2, outdir, test_R2=test_lat_gR2, test_corrs=test_lat_gCorr, suffix="_Latent_Global")
             plot_correlation_evolution(train_lat_mCorr, val_lat_mCorr, outdir, test_corrs=test_lat_mCorr, train_ks=train_lat_mk, val_ks=val_lat_mk, test_ks=test_lat_mk, suffix="_Latent_Mean")
             plot_correlation_evolution(train_lat_gCorr, val_lat_gCorr, outdir, test_corrs=test_lat_gCorr, train_ks=train_lat_gk, val_ks=val_lat_gk, test_ks=test_lat_gk, suffix="_Latent_Global")
             plot_latent_l1_ss_evolution(train_lat_gL1, val_lat_gL1, train_lat_mL1, val_lat_mL1, outdir, test_g=test_lat_gL1 if nb_members_test > 0 else None, test_m=test_lat_mL1 if nb_members_test > 0 else None)
             
-            # Plots d'évaluation spatiale : les trois corrélations, les deux R^2
+            # Plots d'évaluation spatiale 
             plot_map_r2_evolution(train_map_gR2, val_map_gR2, train_map_mR2, val_map_mR2, outdir, test_map=test_map_gR2, test_pix=test_map_mR2, norm="l2")
             plot_map_r2_evolution(train_map_gL1, val_map_gL1, train_map_mL1, val_map_mL1, outdir, test_map=test_map_gL1, test_pix=test_map_mL1, norm="l1")
             plot_spatial_corr_evolution(train_map_sCorr, val_map_sCorr, train_map_tCorr, val_map_tCorr, train_map_gCorr, val_map_gCorr, outdir, test_sc=test_map_sCorr, test_tc=test_map_tCorr, test_gc=test_map_gCorr)
@@ -1003,14 +993,14 @@ if __name__ == "__main__":
     # Sauvegarde et plots finaux
     loss_figure(len(train_losses), train_losses, val_losses, outdir, epoch_times, per_member_val_losses=val_losses_per_member_history, test_losses=test_losses)
 
-    # Plots d'évaluation latente : soit m, soit g
+    # Plots d'évaluation latente 
     plot_r2_R2_evolution(train_lat_mCorr, val_lat_mCorr, train_lat_mR2, val_lat_mR2, outdir, test_R2=test_lat_mR2, test_corrs=test_lat_mCorr, suffix="_Latent_Mean")
     plot_r2_R2_evolution(train_lat_gCorr, val_lat_gCorr, train_lat_gR2, val_lat_gR2, outdir, test_R2=test_lat_gR2, test_corrs=test_lat_gCorr, suffix="_Latent_Global")
     plot_correlation_evolution(train_lat_mCorr, val_lat_mCorr, outdir, test_corrs=test_lat_mCorr, train_ks=train_lat_mk, val_ks=val_lat_mk, test_ks=test_lat_mk, suffix="_Latent_Mean")
     plot_correlation_evolution(train_lat_gCorr, val_lat_gCorr, outdir, test_corrs=test_lat_gCorr, train_ks=train_lat_gk, val_ks=val_lat_gk, test_ks=test_lat_gk, suffix="_Latent_Global")
     plot_latent_l1_ss_evolution(train_lat_gL1, val_lat_gL1, train_lat_mL1, val_lat_mL1, outdir, test_g=test_lat_gL1 if nb_members_test > 0 else None, test_m=test_lat_mL1 if nb_members_test > 0 else None)
 
-    # Plots d'évaluation spatiale : les trois corrélations, les deux R^2
+    # Plots d'évaluation spatiale
     plot_map_r2_evolution(train_map_gR2, val_map_gR2, train_map_mR2, val_map_mR2, outdir, test_map=test_map_gR2 if nb_members_test > 0 else None, test_pix=test_map_mR2 if nb_members_test > 0 else None, norm="l2")
     plot_map_r2_evolution(train_map_gL1, val_map_gL1, train_map_mL1, val_map_mL1, outdir, test_map=test_map_gL1 if nb_members_test > 0 else None, test_pix=test_map_mL1 if nb_members_test > 0 else None, norm="l1")
     plot_spatial_corr_evolution(train_map_sCorr, val_map_sCorr, train_map_tCorr, val_map_tCorr, train_map_gCorr, val_map_gCorr, outdir, test_sc=test_map_sCorr, test_tc=test_map_tCorr, test_gc=test_map_gCorr)
@@ -1063,10 +1053,8 @@ if __name__ == "__main__":
             if args.winter_months is not None: eval_command.extend(["--winter_months"] + [str(x) for x in args.winter_months])
             if args.quantiles: eval_command.extend(["--quantiles"] + [str(x) for x in args.quantiles])
 
-            # --- TRANSFERT DES ARGUMENTS DE FORÇAGE ---
             if args.force_val_members is not None: eval_command.extend(["--force_val_members"] + args.force_val_members)
             if args.force_test_members is not None: eval_command.extend(["--force_test_members"] + args.force_test_members)
-            # ------------------------------------------
 
             if args.roll_sst: eval_command.append("--roll_sst")
             if args.early_fusion_sst: eval_command.append("--early_fusion_sst")
@@ -1118,10 +1106,9 @@ if __name__ == "__main__":
             if args.winter_months is not None: eval_spatial_command.extend(["--winter_months"] + [str(x) for x in args.winter_months])
             if args.quantiles: eval_spatial_command.extend(["--quantiles"] + [str(x) for x in args.quantiles])
 
-            # --- TRANSFERT DES ARGUMENTS DE FORÇAGE ---
+
             if args.force_val_members is not None: eval_spatial_command.extend(["--force_val_members"] + args.force_val_members)
             if args.force_test_members is not None: eval_spatial_command.extend(["--force_test_members"] + args.force_test_members)
-            # ------------------------------------------
 
             if args.roll_sst: eval_spatial_command.append("--roll_sst")
             if args.early_fusion_sst: eval_spatial_command.append("--early_fusion_sst")
@@ -1142,7 +1129,7 @@ if __name__ == "__main__":
 
     eval_shap_script_path = os.path.join(os.path.dirname(__file__), "eval_cnn_shap.py")
     
-    # On évalue généralement SHAP uniquement sur le "best" model pour gagner du temps
+    # On évalue SHAP uniquement sur le "best" model 
     for model_type in ["best"]:  
         print(f"\n--- Évaluation SHAP du modèle : {model_type} ---")
         eval_shap_command = [

@@ -31,7 +31,6 @@ def compute_global_std(members, file_path_SLP, selected_months, duree_lissage=10
     total_sum_sq = 0.0
     total_weights = 0.0
     
-    # NOUVEAU : On va stocker la somme des cosinus ici une seule fois
     map_weight_sum = None 
     
     for member in members:
@@ -198,20 +197,14 @@ def plot_explained_variance(ipca, outdir, val_curves=None):
                     label=f'Validation (Member {member})')
 
 
-    # Titres et labels en anglais
     ax.set_xlabel('Number of Principal Components', fontsize=12, fontweight='bold')
     ax.set_ylabel('Cumulative Explained Variance Ratio', fontsize=12, fontweight='bold')
     ax.set_title('PCA Cumulative Explained Variance (SLP)', fontsize=14, fontweight='bold', pad=15)
-    
-    # Ajustements des axes dynamiques pour couper le vide en bas
     min_y = min(cumulative_variance[0], 0.3)
     ax.set_ylim(bottom=min_y, top=1.02)
     ax.set_xlim(0, len(cumulative_variance) + 1)
     
-    # Grille plus discrète
     ax.grid(True, alpha=0.3, linestyle='--')
-    
-    # Légende épurée
     ax.legend(loc='lower right', fontsize=11, frameon=True, shadow=True, borderpad=1)
     
     plt.tight_layout()
@@ -361,9 +354,7 @@ if __name__ == "__main__":
         ipca.partial_fit(X_train_chunk)
 
     print(f"Fit terminé. Variance totale expliquée par {latent_dim} composantes : {np.sum(ipca.explained_variance_ratio_)*100:.2f}%")
-    # plot_explained_variance(ipca, outdir)
-
-    # NOUVEAU : Plot des EOFs
+    # Plot des EOFs
     plot_eof_patterns(ipca, shape_2d, outdir, n_eofs=10,wgts_flat=global_wgts_flat,slp_std=dynamic_slp_std)
 
     # SAUVEGARDE DU MODÈLE LÉGER

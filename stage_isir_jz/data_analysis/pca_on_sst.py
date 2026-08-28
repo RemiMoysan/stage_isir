@@ -31,7 +31,7 @@ def compute_global_std(members, file_path_SST, selected_months, duree_lissage=10
     total_sum_sq = 0.0
     total_weights = 0.0
     
-    # NOUVEAU : On va stocker la somme des cosinus ici une seule fois
+    # On va stocker la somme des cosinus ici une seule fois
     map_weight_sum = None 
     
     for member in members:
@@ -93,7 +93,7 @@ def load_member_data(member, file_path_SST, selected_months, sst_std=1.0, duree_
     # Remplacement des NaNs par 0 et normalisation (comme dans le VAE)
     data = np.nan_to_num(data, nan=0.0) / sst_std
 
-    # NOUVEAU : roll optionnel en longitude (équivalent numpy de torch.roll(..., shifts=180, dims=-1))
+    # roll optionnel en longitude (équivalent numpy de torch.roll(..., shifts=180, dims=-1))
     if roll_sst:
         data = np.roll(data, shift=180, axis=-1)
 
@@ -373,7 +373,7 @@ if __name__ == "__main__":
     print(f"Fit terminé. Variance totale expliquée par {latent_dim} composantes : {np.sum(ipca.explained_variance_ratio_)*100:.2f}%")
     plot_explained_variance(ipca, outdir)
 
-    # NOUVEAU : Plot des EOFs
+    # Plot des EOFs
     plot_eof_patterns(ipca, shape_2d, outdir, n_eofs=10,wgts_flat=global_wgts_flat,sst_std=dynamic_sst_std, roll_sst=args.roll_sst)
 
     # SAUVEGARDE DU MODÈLE LÉGER

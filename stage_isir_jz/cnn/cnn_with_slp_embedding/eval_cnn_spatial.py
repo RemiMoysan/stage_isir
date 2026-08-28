@@ -46,7 +46,6 @@ if __name__ == "__main__":
     parser.add_argument('--nb_members_val', type=int, default=5)
     parser.add_argument('--nb_members_train', type=int, default=10)
     parser.add_argument('--nb_members_test', type=int, default=5)
-    # --- NOUVEAUX ARGUMENTS DE FORÇAGE ---
     parser.add_argument('--force_val_members', type=str, nargs='*', default=None, help='Forcer une liste spécifique de membres pour la val')
     parser.add_argument('--force_test_members', type=str, nargs='*', default=None, help='Forcer une liste spécifique de membres pour le test')
     parser.add_argument('--seed', type=int, default=42)
@@ -89,7 +88,7 @@ if __name__ == "__main__":
     import random
     rng = random.Random(args.seed)
     rng.shuffle(all_members)
-    # --- NOUVELLE GESTION DU SPLIT ---
+
     if args.force_val_members is not None or args.force_test_members is not None:
         print("⚠️ OVERRIDE ACTIF : Utilisation des listes de membres forcées.")
         val_early_members = args.force_val_members if args.force_val_members else []
@@ -97,7 +96,6 @@ if __name__ == "__main__":
         remaining = [m for m in all_members if m not in val_early_members and m not in test_members]
         # On coupe selon nb_members_train dans l'ordre de la seed !
         train_members = remaining[:args.nb_members_train]
-        # Mise à jour des compteurs au cas où des parties du code les utilisent
         nb_members_train = len(train_members)
         nb_members_val = len(val_early_members)
         nb_members_test = len(test_members)

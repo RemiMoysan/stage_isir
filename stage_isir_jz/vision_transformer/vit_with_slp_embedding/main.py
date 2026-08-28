@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.decomposition import PCA
 
-# import des dossiers siblings
+
 import sys
 from pathlib import Path
 
@@ -31,13 +31,11 @@ parent_dir = str(Path(__file__).resolve().parent.parent)
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
-# Importations unifiées de la pipeline
 from shared_tools.visualizations import loss_figure, loss_first_epoch, plot_and_save_maps_with_reconstruction_light, plot_reconstruction_check, plot_correlation_evolution, plot_r2_R2_evolution, MapMetricTracker, LatentMetricTracker, save_r2_pixel_map_and_plot, plot_map_r2_evolution, plot_spatial_corr_evolution, plot_latent_l1_ss_evolution
 
 from shared_tools.datasets import Dataset, Dataset_mensuel
 from shared_tools.models import ConvVAE, vae_loss, compute_loss, get_median_prediction_full_slp, decode_latent_to_map
 
-# Importation du nouveau modèle tunable
 from tools.models import ViT_Latent_SLP_Multimodal_tunable
 
 # ============================================================
@@ -64,11 +62,9 @@ if __name__ == "__main__":
     parser.add_argument('--duree_lissage', type=int, default=10, help='Durée du lissage en jours')
     parser.add_argument('--bs', type=int, default=128, help='Taille de batch pour l\'entraînement')
     parser.add_argument('--lr', type=float, default=5e-5, help='Learning rate pour l\'entraînement du ViT')
-    
-    # NOUVEAU: Weight Decay
     parser.add_argument('--weight_decay', type=float, default=0.0, help='Poids de la régularisation L2 (Weight Decay)')
 
-    # NOUVEAU: Arguments Tunables ViT
+    # Arguments Tunables ViT
     parser.add_argument('--dr', type=float, default=0.1, help='Dropout rate pour le ViT')
     parser.add_argument('--embed_dim', type=int, default=128, help='Dimension interne du Transformer')
     parser.add_argument('--depth', type=int, default=4, help='Profondeur du réseau Transformer')
@@ -146,7 +142,6 @@ if __name__ == "__main__":
     if args.loss_type == 'quantile':
         loss_tag += "_" + "".join([str(q).replace('.','') for q in args.quantiles])
 
-    # Naming de l'output adapté aux nouveaux hyperparamètres
     model_spec = f"emb{args.embed_dim}d{args.depth}h{args.num_heads}pool{args.pool_strategy}wd{weight_decay}"
     
     if args.embed_method == 'pca':
@@ -655,9 +650,9 @@ if __name__ == "__main__":
 
     print(f"Training complete, elapsed time: {(time.time() - start_time) / 60:.2f} minutes")
 
-    # ============================================================
-    # AUTOMATIC EVALUATIONS (EVAL_VIT & EVAL_VIT_FULL_SLP)
-    # ============================================================
+    # ======================
+    # AUTOMATIC EVALUATIONS 
+    # ======================
     print("\n" + "="*50)
     print("🚀 Lancement de l'évaluation automatique...")
     print("="*50)

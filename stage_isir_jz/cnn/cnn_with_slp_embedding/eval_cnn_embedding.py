@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 import time
 import re
 
-# Attention entr 1ME et 1ME selon le module qu'on charge (est ce que ça depend du noeud?)
 
 import torch
 import torch.nn as nn
@@ -51,7 +50,6 @@ if __name__ == "__main__":
     parser.add_argument('--nb_members_train', type=int, default=10) # argument inutile
     parser.add_argument('--nb_members_val', type=int, default=5)
     parser.add_argument('--nb_members_test', type=int, default=5)
-    # --- NOUVEAUX ARGUMENTS DE FORÇAGE ---
     parser.add_argument('--force_val_members', type=str, nargs='*', default=None, help='Forcer une liste spécifique de membres pour la val')
     parser.add_argument('--force_test_members', type=str, nargs='*', default=None, help='Forcer une liste spécifique de membres pour le test')
 
@@ -71,11 +69,8 @@ if __name__ == "__main__":
     parser.add_argument('--monthly_mean', action='store_true', help='Appliquer une moyenne mensuelle. Si absent, garde la résolution journalière.')
     parser.add_argument('--n_bootstraps', type=int, default=1000, help='Itérations pour la p-value de corrélation')
     
-    # --- NOUVEAUX ARGUMENTS POUR LES QUANTILES ---
     parser.add_argument('--loss_type', type=str, choices=['mse', 'l1', 'quantile','correlation'], default='mse')
     parser.add_argument('--quantiles', type=float, nargs='+', default=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
-
-    # --- NOUVEAUX ARGUMENTS ---
     parser.add_argument('--monthly_reduction', action='store_true', help='Utiliser les données sous-échantillonnées mensuellement (_1mo.nc)')
     parser.add_argument('--lat_weight', action='store_true', help='Applique la pondération spatiale sqrt(cos(lat))')
 
@@ -106,10 +101,9 @@ if __name__ == "__main__":
     start_time = time.time()
 
     # ============================================================
-    # 1. SETUP DATASET & MEMBERS (Même seed cruciale !)
+    # 1. SETUP DATASET & MEMBERS 
     # ============================================================
     all_members = ['1001.001', '1041.003', '1061.004', '1081.005', '1101.006', '1121.007', '1141.008', '1161.009', '1181.010', '1231.001', '1231.002', '1231.003', '1231.004', '1231.005', '1231.006', '1231.007', '1231.008', '1231.009', '1231.010', '1231.011', '1231.012', '1231.013', '1231.014', '1231.015', '1231.016', '1231.017', '1231.018', '1231.019', '1231.020', '1251.001', '1251.002', '1251.003', '1251.004', '1251.005', '1251.006', '1251.007', '1251.008', '1251.009', '1251.010', '1251.011', '1251.012', '1251.013', '1251.014', '1251.015', '1251.016', '1251.017', '1251.018', '1251.019', '1251.020', '1281.001', '1281.002', '1281.003', '1281.004', '1281.005', '1281.006', '1281.007', '1281.008', '1281.009', '1281.010', '1281.011', '1281.012', '1281.013', '1281.014', '1281.015', '1281.016', '1281.017', '1281.018', '1281.019', '1281.020', '1301.001', '1301.002', '1301.003', '1301.004', '1301.005', '1301.006', '1301.007', '1301.008', '1301.009', '1301.010', '1301.011', '1301.012', '1301.013', '1301.014', '1301.015', '1301.016', '1301.017', '1301.018', '1301.019', '1301.020']
-    # --- NOUVELLE GESTION DU SPLIT ---
     rng = random.Random(args.seed)
     rng.shuffle(all_members)
     if args.force_val_members is not None or args.force_test_members is not None:
@@ -191,10 +185,8 @@ if __name__ == "__main__":
         vae_model.load_state_dict(torch.load(args.embed_path, map_location=device))
         vae_model.eval()
 
-    # --- MODIFICATION: Taille dynamique de sortie ---
     out_features = args.latent_dim * len(args.quantiles) if args.loss_type == 'quantile' else args.latent_dim
 
-    # --- CORRECTION : SÉLECTION DYNAMIQUE DES LAGS ---
     if args.monthly_reduction:
         active_sst_lags = args.sst_lags_months
         active_slp_lags = args.slp_lags_months
@@ -202,14 +194,6 @@ if __name__ == "__main__":
         active_sst_lags = args.sst_lags_days
         active_slp_lags = args.slp_lags_days
 
-    # model = CNN_Latent_SLP_Multimodal1(
-    #     dr=0., 
-    #     nb_out=out_features, 
-    #     in_chans_sst=len(active_sst_lags), 
-    #     in_chans_slp=len(active_slp_lags), 
-    #     n_feat=8,
-    #     early_fusion_sst=args.early_fusion_sst 
-    # ).to(device)
 
     model = CNN_Latent_SLP_Multimodal1_tunable(
         dr_conv=args.dr_conv,
@@ -295,7 +279,6 @@ if __name__ == "__main__":
     preds_arr = np.concatenate(preds_list, axis=0)
     trues_arr = np.concatenate(trues_list, axis=0)
 
-    # --- NOUVEAU : Transformation pour la Modalité Quantile ---
     if args.loss_type == 'quantile':
         # (N, latent_dim * n_quantiles) -> (N, latent_dim, n_quantiles)
         preds_arr = preds_arr.reshape(-1, args.latent_dim, len(args.quantiles))
@@ -343,7 +326,6 @@ if __name__ == "__main__":
             month_outdir = os.path.join(member_base_dir, f"month_{m}_{calendar.month_abbr[m]}")
             os.makedirs(month_outdir, exist_ok=True)
 
-            # 1. Extraction des matrices de prédiction et cible pour CE mois
             pred_cols = [f'pred_pc{i+1}' for i in range(args.latent_dim)]
             true_cols = [f'true_pc{i+1}' for i in range(args.latent_dim)]
             
@@ -355,7 +337,6 @@ if __name__ == "__main__":
             Z_p_m = df_m_res[pred_cols].values  # (T, latent_dim)
             Z_t_m = df_m_res[true_cols].values  # (T, latent_dim)
             
-            # 2. APPEL UNIQUE AU MOTEUR VECTORIEL (Séries brutes + 6 globales + PC individuelles)
             print(f"    Computing all latent metrics & bootstraps for {month_name}...")
             df_lat_ts, stats_global_month, stats_per_pc = compute_latent_metrics_and_bootstraps(
                 Z_t_m, Z_p_m, df_m_res['time'], n_bootstraps=min(300, args.n_bootstraps)

@@ -154,11 +154,9 @@ def quantile_loss(preds, target, quantiles):
     
     return torch.mean(torch.cat(losses, dim=1))
 
-# ============================================================
-# VAE pour essayer de embed 
-# classe un peu redondante avec le dossier data_analysis ou essaie d'embed à part 
-# il me semble qu'il y a aussi une version avec crop plutôt que du padding dans les convolutions? 
-# ============================================================
+# =====
+# VAE 
+# =====
 
 class ConvVAE(nn.Module):
     def __init__(self, latent_dim=128):
@@ -210,7 +208,7 @@ class ConvVAE(nn.Module):
 
 def vae_loss(recon_x, x, mu, logvar, beta=1.0, wgts_tensor=None):
     if wgts_tensor is not None:
-        # NOUVEAU : wgts_tensor est déjà cos(lat), plus besoin de le mettre au carré
+        # wgts_tensor est déjà cos(lat), pas besoin de le mettre au carré
         sq_error = (recon_x - x) ** 2
         weighted_sq_error = sq_error * wgts_tensor 
         MSE = torch.sum(weighted_sq_error) / x.shape[0]
@@ -254,6 +252,7 @@ def get_fast_labels(slp_batch, ref_dict, metric='mse', projector=None, device='c
     """
     Convertit un batch de cartes SLP (B, 53, 113) en un tenseur de labels (B,)
     Les métriques mse et correlation sont générales et devraient marcher dans tous les cas, même sans projecteur. 
+    C'est pour le code composite.
     """
     B = slp_batch.shape[0]
     
@@ -339,44 +338,6 @@ def get_fast_labels(slp_batch, ref_dict, metric='mse', projector=None, device='c
     return torch.tensor(labels, dtype=torch.long)
     
 
-def old_get_fast_labels(slp_batch, ref_dict, metric='correlation'):
-    """
-    Convertit un batch de cartes SLP (B, 53, 113) en un tenseur de labels (B,)
-    """
-    B = slp_batch.shape[0]
-    
-    # 1. Extraction des 4 cartes de référence SLP (dans l'ordre 0, 1, 2, 3)
-    regime_prefixes = []
-    for i in range(1, 5): 
-        for key in ref_dict.keys():
-            if key.startswith(f"regime_{i}_") and key.endswith("_slp_0"):
-                regime_prefixes.append(key.replace("_slp_0", ""))
-                break
-    
-    ref_slp = np.array([ref_dict[f"{prefix}_slp_0"] for prefix in regime_prefixes])
-    
-    # 2. Aplatissement
-    slp_flat = slp_batch.reshape(B, -1) # (B, 5989)
-    ref_slp_flat = ref_slp.reshape(4, -1) # (4, 5989)
-    
-    # 3. Calcul
-    if metric == 'correlation':
-        s_c = slp_flat - slp_flat.mean(axis=1, keepdims=True)
-        r_c = ref_slp_flat - ref_slp_flat.mean(axis=1, keepdims=True)
-        s_n = np.linalg.norm(s_c, axis=1, keepdims=True)
-        r_n = np.linalg.norm(r_c, axis=1, keepdims=True)
-        s_n[s_n == 0], r_n[r_n == 0] = 1e-10, 1e-10
-        
-        corr_matrix = np.dot(s_c, r_c.T) / (s_n * r_n.T) # (B, 4)
-        labels = np.argmax(corr_matrix, axis=1) # On prend la corrélation MAX
-        
-    elif metric == 'mse':
-        diff = slp_flat[:, np.newaxis, :] - ref_slp_flat[np.newaxis, :, :]
-        mse_matrix = np.mean(diff**2, axis=2) # (B, 4)
-        labels = np.argmin(mse_matrix, axis=1) # On prend l'erreur MIN
-        
-    # Retourne un tenseur PyTorch formaté pour la CrossEntropy
-    return torch.tensor(labels, dtype=torch.long)
 
 def pearson_correlation(y_pred, y_true, dim=0):
     """Calcule le coefficient de Pearson sur une dimension donnée (par défaut le batch)."""

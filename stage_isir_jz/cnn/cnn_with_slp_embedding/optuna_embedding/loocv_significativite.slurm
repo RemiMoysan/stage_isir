@@ -52,7 +52,7 @@ PID_CPU=$!
 
 # 4. Lancement de ton script Python
 # 4. Lancement de ton script Python
-srun python loocv_significativite2.py \
+srun python loocv_significativite.py \
     --optimize_metric R2 \
     --lat_weight \
     --winter_months 2 \

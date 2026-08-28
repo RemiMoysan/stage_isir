@@ -260,7 +260,6 @@ def generate_master_reference(member_ids, sst_lags, slp_lags, winter_months,dure
     fig_d, axes_d = plt.subplots(n_rows, n_cols, figsize=(5.5 * n_cols, 3.5 * n_rows), 
                                  subplot_kw={'projection': ccrs.PlateCarree()}, gridspec_kw={"width_ratios": col_widths}, squeeze=False)
 
-    # === NOUVEAU : Création des figures SNR et P-VALUE ===
     fig_snr, axes_snr = plt.subplots(n_rows, n_cols, figsize=(5.5 * n_cols, 3.5 * n_rows), subplot_kw={'projection': ccrs.PlateCarree()}, gridspec_kw={"width_ratios": col_widths}, squeeze=False)
 
     N_total = sum(sorted_counts)
@@ -303,7 +302,6 @@ def generate_master_reference(member_ids, sst_lags, slp_lags, winter_months,dure
 
             cbar_shrink = 0.7 if is_slp else 0.6
 
-            # === NOUVEAU : ÉCHELLES DYNAMIQUES ET SymLogNorm ADAPTÉS AUX UNITÉS PHYSIQUES ===
             if is_slp:
                 vmax_mean = 2*magnitude_slp
                 linthresh_val = 0.4*magnitude_slp  
@@ -314,7 +312,7 @@ def generate_master_reference(member_ids, sst_lags, slp_lags, winter_months,dure
                 my_norm_mean = mcolors.Normalize(vmin=-vmax_mean, vmax=vmax_mean)
             else:
                 vmax_mean = 2*magnitude_sst
-                linthresh_val = 0.4 * magnitude_sst   # Pour la SST, la zone linéaire est entre -0.3 et 0.3 K
+                linthresh_val = 0.4 * magnitude_sst  
                 cbar_ticks_mean = cbar_ticks_mean_sst
                 vmax_std = 2*magnitude_sst
                 vmax_diff = 0.3*magnitude_sst
@@ -356,7 +354,7 @@ def generate_master_reference(member_ids, sst_lags, slp_lags, winter_months,dure
             cbar_d.set_label(f'ΔStd ({unit_label})')
 
             # =========================================================
-            # 4. NOUVEAU : CARTE DE SNR (Signal-to-Noise Ratio)
+            # 4. CARTE DE SNR (Signal-to-Noise Ratio)
             # =========================================================
             mean_val = composites_mean[k][key]
             std_val = composites_std[k][key]
@@ -788,7 +786,7 @@ def generate_master_reference(member_ids, sst_lags, slp_lags, winter_months,dure
                         )
 
     # =========================================================================
-    # NOUVEAU : HEATMAPS 2D SÉPARÉES (SST vs SLP) DU SNR SPATIAL + SCORE GLOBAL
+    # HEATMAPS 2D SÉPARÉES (SST vs SLP) DU SNR SPATIAL + SCORE GLOBAL
     # =========================================================================
     print("\nGénération des heatmaps 2D récapitulatives des SNR (SST et SLP séparées)...")
     

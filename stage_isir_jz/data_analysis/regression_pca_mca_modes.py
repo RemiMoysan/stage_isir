@@ -257,7 +257,6 @@ def evaluate_and_loocv(
     X_tr_c, Y_tr_c = X_train - X_train_mean, Y_train - Y_train_mean
     X_val_c, Y_val_c = X_val - X_train_mean, Y_val - Y_train_mean
 
-    # 👇 AJOUTE CETTE LIGNE ICI 👇
     var_total_val_Y = np.sum(Y_val_c**2)
 
     # Bases globales pour le Train Set
@@ -362,13 +361,11 @@ def evaluate_and_loocv(
         
         plt.plot(x_ax, d["profile"], color=colors[i], linestyle=styles[i], marker=markers[i], markevery=10, label=lbl)
 
-    # Nouveaux titres propres
     plt.title(f"Spatial Target Val Skill Score (Max over optimal number of output modes if applicable) - {month_label}", fontweight="bold")
     plt.xlabel("Number of Input Modes (SST)")
     plt.ylabel("Explained Spatial Variance ($R^2$)")
     plt.grid(True, linestyle="--", alpha=0.5)
     
-    # Légende en bas à droite
     plt.legend(loc="lower right")
     plt.tight_layout()
     plt.savefig(os.path.join(outdir, "spatial_target_R2_skill_6curves.png"), dpi=200, bbox_inches="tight")
@@ -484,8 +481,6 @@ if __name__ == "__main__":
     parser.add_argument("--lat_weight", action="store_true", help="Pondération spatiale cos(lat)")
     parser.add_argument("--winter_months", type=int, nargs="+", default=[11, 12, 1, 2], help="Mois d'hiver")
     parser.add_argument("--nb_val", type=int, default=5, help="Nombre de membres pour validation (Graphe)")
-    
-    # NOUVEAUX ARGUMENTS GLOBAUX POUR L'OPTIMISATION
     parser.add_argument("--max_modes_in", type=int, default=300, help="Max modes SST (PCA/MCA) à tester")
     parser.add_argument("--max_modes_out", type=int, default=100, help="Max modes SLP (PCA/MCA) à tester")
     

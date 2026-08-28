@@ -18,47 +18,7 @@ from datetime import timedelta, datetime
 extent_slp = [-100, 40, 20, 70] 
 #extent_sst = [0, 360, -20, 80]  # ou [-180,180,-20,80] selon si on a fait rolling ou pas... EN FAIT je crois que c'est [-180, 180, -15, 70]
 extent_sst = [-180, 180, -15, 70] # cf Dataset qui fait slice sur la latitude et qui décale de 180 les longitudes (si on décommente torch.roll dans Dataset) 
-# je crois que .set_extent est superflu : au final non je ne crois pas (ça dépend ??)
-# extent_sst dans ces fonctions de visualisation pour l'instant. 
 
-# def loss_figure(epochs, train_losses, val_losses, outdir_new, epoch_times=None):
-#     """
-#     Loss avec double axe des abscisses : epochs et temps d'entraînement cumulé en minutes.
-#     """
-#     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 5))
-    
-#     ax.plot(range(epochs), train_losses, label='Train Loss', color='C0')
-#     ax.plot(range(epochs), val_losses, label='Validation Loss', color='C1')
-#     ax.set_xlabel('Epochs')
-#     ax.set_ylabel('Loss')
-#     ax.legend()
-#     ax.set_title("Loss Evolution during training\n", pad=20) # pad pour faire de la place au 2eme axe
-    
-#     # --- NOUVEAU : Création du 2ème axe des abscisses ---
-#     if epoch_times is not None and len(epoch_times) == epochs:
-#         ax2 = ax.twiny() # Crée un second axe X qui partage le même axe Y
-        
-#         # On force les limites à être strictement identiques
-#         ax2.set_xlim(ax.get_xlim())
-        
-#         # On choisit combien de "ticks" on veut afficher (ex: 6 max pour que ce soit lisible)
-#         num_ticks = min(6, epochs)
-#         if epochs > 1:
-#             tick_indices = np.linspace(0, epochs - 1, num_ticks, dtype=int)
-#         else:
-#             tick_indices = [0]
-            
-#         # On place les graduations aux mêmes endroits que les époques choisies
-#         ax2.set_xticks(tick_indices)
-#         # On écrit le temps formaté en minutes (ex: "15.2m")
-#         ax2.set_xticklabels([f"{epoch_times[i]:.1f}m" for i in tick_indices])
-#         ax2.set_xlabel("Temps d'entraînement cumulé (minutes)")
-    
-#     figs_file = "Fig_loss-evolution-during-training.png"
-#     figs_filename = os.path.join(outdir_new, figs_file)
-#     plt.tight_layout()
-#     plt.savefig(figs_filename)
-#     plt.close()
 
 def loss_figure(epochs, train_losses, val_losses, outdir_new, epoch_times=None, per_member_val_losses=None, train_loss_label="Train Loss", val_loss_label="Val Loss (global)", name = "Fig_loss-evolution-during-training.png",test_losses=None):
     """
@@ -175,7 +135,7 @@ def loss_first_epoch(batch_losses, baseline_losses, outdir,label = "Train",batch
     # Courbe de la baseline évaluée sur les mêmes batchs
     plt.plot(baseline_losses, label='Baseline (Pred = 0)', color='red', linestyle='--', alpha=0.5)
     
-    # NOUVEAU : Ligne horizontale pour la moyenne globale de la baseline
+    # Ligne horizontale pour la moyenne globale de la baseline
     mean_baseline = np.mean(baseline_losses)
     plt.axhline(y=mean_baseline, color='red', linestyle='--', linewidth=1.5,label=f'Baseline Moyenne : {mean_baseline:.4f}')
 
@@ -206,7 +166,7 @@ def loss_acc_first_epoch(batch_losses, baseline_losses, batch_accs, baseline_acc
         ax1.plot(batch_losses, label=f'{label} Loss epoch {epoch_num}', color='blue')
         ax1.plot(baseline_losses, label='Baseline Loss', color='red', linestyle='--', alpha=0.5)
 
-    # NOUVEAU : Ligne horizontale pour la moyenne de la Baseline Loss
+    # Ligne horizontale pour la moyenne de la Baseline Loss
     mean_b_loss = np.mean(baseline_losses)
     ax1.axhline(y=mean_b_loss, color='red', linestyle='--', linewidth=1.5,label=f'Baseline Loss Moy : {mean_b_loss:.4f}')
 
@@ -224,7 +184,7 @@ def loss_acc_first_epoch(batch_losses, baseline_losses, batch_accs, baseline_acc
         ax2.plot(batch_accs, label=f'{label} Accuracy epoch {epoch_num}', color='green')
         ax2.plot(baseline_accs, label='Baseline Acc (Majority Class)', color='orange', linestyle='--', alpha=0.5)
 
-    # NOUVEAU : Ligne horizontale pour la moyenne de la Baseline Accuracy
+    # Ligne horizontale pour la moyenne de la Baseline Accuracy
     mean_b_acc = np.mean(baseline_accs)
     ax2.axhline(y=mean_b_acc, color='orange', linestyle='--', linewidth=1.5,label=f'Baseline Acc Moy : {mean_b_acc:.2f}%')
     ax2.set_xlabel('Batch Index')
@@ -282,7 +242,6 @@ def plot_and_save_maps(slp_true_list, slp_pred_list, time_list, outdir, epoch=No
         for j in range(max(0, idx - half_w), min(N, idx + half_w + 1)):
             current_date = time_list[j]
             
-            # On utilise strptime avec TON format exact '%Y-%m-%d'
             t_date = datetime.strptime(target_date, '%Y-%m-%d') if isinstance(target_date, str) else target_date
             c_date = datetime.strptime(current_date, '%Y-%m-%d') if isinstance(current_date, str) else current_date
             
@@ -318,8 +277,6 @@ def plot_and_save_maps(slp_true_list, slp_pred_list, time_list, outdir, epoch=No
         ax_row[1].set_extent(extent_slp, crs=ccrs.PlateCarree())
 
     plt.tight_layout()
-    
-    # On nomme le fichier avec l'époque pour ne pas écraser les précédents
     filename = f"val_maps_epoch_{epoch}_duree_moyennage_{duree_moyennage}.png" if epoch is not None else "val_maps_final.png"
     save_path = os.path.join(outdir, filename)
     plt.savefig(save_path, dpi=150)
@@ -619,7 +576,7 @@ def plot_and_save_maps_light(
         ax_row[0].coastlines()
         fig.colorbar(im1, ax=ax_row[0], fraction=0.046, pad=0.04)
 
-        # Colonne 2 : Prédiction du ViT
+        # Colonne 2 : Prédiction
         im2 = ax_row[1].imshow(
             slp_pred[i],
             cmap="RdBu_r",
@@ -729,49 +686,13 @@ def plot_confusion_matrix(y_true, y_pred, outdir, master_ref, filename='confusio
     
     plt.ylabel('Vraie Classe (Réalité)')
     plt.xlabel('Classe Prédite (Modèle)')
-    
-    # CORRECTION : f-string ajouté !
     plt.title(f'Matrice de Confusion \nAccuracy : {accuracy:.2f}%', fontsize=14, fontweight='bold')
     
     plt.tight_layout()
     plt.savefig(os.path.join(outdir, filename), dpi=200)
     plt.close()
 
-def old_plot_confusion_matrix(y_true, y_pred, outdir, master_ref, filename='confusion_matrix.png'):
-    cm = confusion_matrix(y_true, y_pred, labels=[0, 1, 2, 3])
-    
-    # --- CALCUL DE L'ACCURACY ---
-    accuracy = np.sum(np.array(y_true) == np.array(y_pred)) / len(y_true) * 100
 
-    # --- EXTRACTION DYNAMIQUE DES LABELS ---
-    # On va chercher les noms directement dans les clés du dictionnaire
-    class_names = ["", "", "", ""]
-    for key in master_ref.keys():
-        if key.startswith("regime_") and key.endswith("_slp_0"):
-            # Exemple de key : 'regime_1_NAO+_slp_0'
-            parts = key.split('_')
-            # L'index du régime (1, 2, 3 ou 4) est à la position 1.
-            # On fait -1 car les index des listes Python commencent à 0.
-            regime_idx = int(parts[1]) - 1 
-            # Le nom (NAO+, AR...) est à la position 2
-            regime_name = parts[2] 
-            class_names[regime_idx] = regime_name
-            
-    # Remplacement au cas où un nom serait vide (sécurité)
-    class_names = [name if name else f"Regime {i+1}" for i, name in enumerate(class_names)]
-    # ---------------------------------------
-
-    plt.figure(figsize=(8, 6))
-    
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False,
-                xticklabels=class_names, yticklabels=class_names)
-    
-    plt.ylabel('Vraie Classe (Réalité)')
-    plt.xlabel('Classe Prédite (Modèle)')
-    plt.title('Matrice de Confusion \nAccuracy : {accuracy:.2f}%', fontsize=14, fontweight='bold')
-    plt.tight_layout()
-    plt.savefig(os.path.join(outdir, filename), dpi=200)
-    plt.close()
 
 def plot_correlation_evolution(train_corrs, val_corrs, outdir, train_ks=None, val_ks=None, test_corrs=None, test_ks=None, epoch_1=False, epoch_2=False, batch_indexes=None,suffix="_Latent_Mean"):
     plt.figure(figsize=(10, 5))
@@ -907,7 +828,7 @@ class MapMetricTracker:
         self.sum_p2 = torch.zeros(self.shape, dtype=torch.float64, device=self.device)
         self.sum_pt = torch.zeros(self.shape, dtype=torch.float64, device=self.device)
         self.sum_res = torch.zeros(self.shape, dtype=torch.float64, device=self.device)
-        # NOUVEAU : Accumulateurs L1 spatiaux
+        # Accumulateurs L1 spatiaux
         self.sum_abs_t = torch.zeros(self.shape, dtype=torch.float64, device=self.device)
         self.sum_abs_res = torch.zeros(self.shape, dtype=torch.float64, device=self.device)
         
@@ -943,7 +864,7 @@ class MapMetricTracker:
         var_t = ((t_flat - t_mean)**2).sum(dim=1)
         var_p = ((p_flat - p_mean)**2).sum(dim=1)
 
-        # NOUVEAU : Mise à jour L1 spatiale
+        # Mise à jour L1 spatiale
         self.sum_abs_t += torch.abs(t).sum(dim=0)
         self.sum_abs_res += torch.abs(t - p).sum(dim=0)
         
@@ -995,11 +916,11 @@ class MapMetricTracker:
         global_r2 = float((1.0 - (mse_global / (var_t_global + 1e-8))).item())
         spatial_temporal_corr = float((cov_global / torch.sqrt(var_t_global * var_p_global + 1e-8)).item())
 
-        # NOUVEAU : 1. Carte 2D du Skill Score L1 par pixel
+        # 1. Carte 2D du Skill Score L1 par pixel
         ss_l1_pixel_map = 1.0 - (self.sum_abs_res / (self.sum_abs_t + 1e-8))
         mean_pixel_ss_l1 = float(((ss_l1_pixel_map * W).sum() / W_sum).item())
         
-        # NOUVEAU : 2. Skill Score L1 Global (sur toute la carte pondérée)
+        # 2. Skill Score L1 Global (sur toute la carte pondérée)
         mae_global = (self.sum_abs_res * W).sum() / W_sum
         mae_ref_global = (self.sum_abs_t * W).sum() / W_sum
         global_ss_l1 = float((1.0 - (mae_global / (mae_ref_global + 1e-8))).item())
@@ -1024,7 +945,7 @@ class LatentMetricTracker:
         self.sum_pt = 0.0
         self.sum_res = 0.0
 
-        # NOUVEAU : Accumulateurs L1
+        # Accumulateurs L1
         self.sum_abs_t = 0.0
         self.sum_abs_res = 0.0
         self.n_samples = 0
@@ -1040,7 +961,7 @@ class LatentMetricTracker:
         self.sum_pt += (p * t).sum(dim=0)
         self.sum_res += ((p - t) ** 2).sum(dim=0)
 
-        # NOUVEAU : Mise à jour L1
+        # Mise à jour L1
         self.sum_abs_t += torch.abs(t).sum(dim=0)
         self.sum_abs_res += torch.abs(p - t).sum(dim=0)
         self.n_samples += t.size(0)
@@ -1076,11 +997,11 @@ class LatentMetricTracker:
         g_var_p = (g_sum_p2 / N_g) - g_mean_p**2
         g_cov = (g_sum_pt / N_g) - (g_mean_t * g_mean_p)
 
-        # NOUVEAU : 1. L1 Skill Score par composante puis moyenné (Mean L1 SS)
+        # 1. L1 Skill Score par composante puis moyenné (Mean L1 SS)
         ss_l1_comp = 1.0 - (self.sum_abs_res / (self.sum_abs_t + 1e-8))
         mean_comp_ss_l1 = ss_l1_comp.mean().item()
         
-        # NOUVEAU : 2. L1 Skill Score Global (Toutes composantes confondues)
+        # 2. L1 Skill Score Global (Toutes composantes confondues)
         g_sum_abs_t = self.sum_abs_t.sum()
         g_sum_abs_res = self.sum_abs_res.sum()
         global_ss_l1 = float((1.0 - (g_sum_abs_res / (g_sum_abs_t + 1e-8))).item())
@@ -1140,7 +1061,7 @@ def save_r2_pixel_map_and_plot(map_np, outdir, filename_prefix, metric_type="l2"
         transform=ccrs.PlateCarree()
     )
     ax.set_title(f"{title_str} (Max: {np.nanmax(map_np):.3f})", fontsize=12)
-    ax.coastlines()  # <-- Strictement identique à la fonction légère (pas de download !)
+    ax.coastlines()  
 
     cbar = plt.colorbar(im, ax=ax, label=cbar_label, pad=0.02)
     if ticks is not None:

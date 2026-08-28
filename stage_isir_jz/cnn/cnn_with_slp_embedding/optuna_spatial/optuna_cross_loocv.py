@@ -106,12 +106,11 @@ def objective(trial):
         pool_type=pool_type, pool_strategy=pool_strategy, activation=activation, use_gap=use_gap
     ).to(device)
 
-    # ---> AJOUT INDISPENSABLE : INITIALISATION LAZY <---
+    # INITIALISATION LAZY 
     with torch.no_grad():
         dummy_sst = torch.zeros(1, len(sst_lags_months), 85, 360).to(device) if len(sst_lags_months) > 0 else None
         dummy_slp = torch.zeros(1, len(slp_lags_months), 53, 113).to(device) if len(slp_lags_months) > 0 else None
         _ = model(dummy_sst, dummy_slp)
-    # ---------------------------------------------------
 
     decay, no_decay = [], []
     for name, param in model.named_parameters():

@@ -1,17 +1,18 @@
 #!/bin/bash
-#SBATCH --job-name=signloocv      # Nom du job
-#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_with_slp_embedding/optuna_embedding/log/loocvsign_%j.out   # Fichier de sortie standard (%j = ID du job)
-#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/cnn/cnn_with_slp_embedding/optuna_embedding/log/loocvsign_%j.out    # Fichier d'erreur
+#SBATCH --job-name=optunaMLP      # Nom du job
+#SBATCH --output=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/embedding_2_embedding/optuna_embedding/log/optuna_embedding_%j.out
+#SBATCH --error=/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/embedding_2_embedding/optuna_embedding/log/optuna_embedding_%j.out
 #SBATCH --partition=gpu_p6           # <-- CORRIGÉ : Partition H100
 #SBATCH -C h100                      # Force la carte H100
-#SBATCH --time=1:00:00              # Temps alloué (test rapide)
+#SBATCH --time=20:00:00              # Temps alloué (test rapide)
 #SBATCH --nodes=1                    # 1 seul noeud
 #SBATCH --ntasks=1                   # 1 seule tâche PyTorch
 #SBATCH --gres=gpu:1                 # 1 seul GPU H100
 #SBATCH --cpus-per-task=24           # Max CPU autorisé pour 1 H100 (96/4)
 #SBATCH --hint=nomultithread         # Désactive l'hyperthreading
 #SBATCH --account=uxg@h100           # Ton projet sur H100
-#SBATCH --qos=qos_gpu_h100-dev
+   
+
 
 # 1. Nettoyage de l'environnement
 module purge
@@ -21,51 +22,57 @@ module load arch/h100
 module load pytorch-gpu/py3/2.5.1    # <-- CORRIGÉ : Version supportant Hopper
 export PYTHONUSERBASE=$WORK/.local_vit_h100 
 
-
 # 3. Déplacement dans ton répertoire de travail
-cd $WORK/stage_isir_jz/cnn/cnn_with_slp_embedding/optuna_embedding/
+cd $WORK/stage_isir_jz/mlp/optuna_embedding/
 
 # --- DÉBUT DES AJOUTS POUR LE MONITORING ---
-
-# Création du dossier 'log' s'il n'existe pas encore
 mkdir -p log
 
-# Chemins des fichiers (relatifs au dossier actuel vit_with_full_slp)
 LOG_GPU="log/gpu_usage_${SLURM_JOB_ID}.log"
 LOG_CPU="log/cpu_usage_${SLURM_JOB_ID}.log"
 
 echo "Début du monitoring. Fichiers : $LOG_GPU et $LOG_CPU"
 
-# Monitoring GPU toutes les 300 secondes (5 min) en tâche de fond (&)
 nvidia-smi --query-gpu=timestamp,utilization.gpu,utilization.memory,memory.used --format=csv -l 300 > $LOG_GPU &
 PID_GPU=$!
 
-# Monitoring CPU/RAM toutes les 300 secondes (5 min) en tâche de fond (&)
 (while true; do 
     echo "$(date) | CPU: $(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')% | RAM: $(free -h | grep Mem | awk '{print $3}') used" >> $LOG_CPU; 
     sleep 300; 
 done) &
 PID_CPU=$!
-
 # --- FIN DES AJOUTS POUR LE MONITORING ---
-# --lat_weight
-# --monthly_reduction
+
+#     --include_lag1 \
+#     --fixed_seed 1 \
+
+
 
 # 4. Lancement de ton script Python
-srun python loocv_significativite2.py \
+srun python optuna_hyperparameters.py \
+    --n_trials 700 \
+    --n_startup_trials_tpe 150 \
+    --n_startup_trials_pruner 50 \
+    --n_warmup_steps 2 \
+    --interval_steps 3 \
     --optimize_metric R2 \
-    --lat_weight \
-    --winter_months 2 \
-    --nb_intra_evals 15 \
+    --embed_path "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_slp/monthly_reduction/lat_weightTrue/IPCA_latent128_winter_months_11_12_1_2_87members_normalizeFalse_monthly_reduction_wgtTrue_slp_std467.2/best_pca_model.joblib" \
+    --embed_path_sst "/lustre/fswork/projects/rech/uxg/uca57ub/stage_isir_jz/data_analysis/pca_sst/IPCA_latent512_winter_months_8_9_10_11_12_1_2_87members_normalizeFalse_monthly_reduction_wgtTrue_sst_std0.55_roll_sstTrue/best_pca_model.joblib" \
+    --machine jean-zay-work \
+    --nb_members_val 5 \
+    --patience 5 \
+    --fixed_seed 1 \
+    --latent_dim 1 \
+    --nb_epochs 20 \
+    --winter_months 11 \
     --roll_sst \
+    --lat_weight \
     --include_lag1 \
-    --sst_lags_months 1 2 \
-
-
-
-
-
+    --sequential_lags \
+    --nb_intra_evals 15 \
+    --loss_type mse \
+    --slp_lags_months \
+    
 # 5. NETTOYAGE INDISPENSABLE
-# On tue les boucles de monitoring pour que le job SLURM puisse se terminer proprement
 kill $PID_GPU $PID_CPU
 echo "Entraînement et monitoring terminés."

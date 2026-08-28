@@ -349,7 +349,7 @@ if __name__ == "__main__":
     # ============================================================
     # 3. CRÉATION DU DOSSIER DYNAMIQUE ET CHEMINS
     # ============================================================
-    base_name = f"LOOCVnew2_{args.embed_method}{args.latent_dim}_{args.optimize_metric}_m{''.join(map(str, args.winter_months))}"
+    base_name = f"LOOCV_{args.embed_method}{args.latent_dim}_{args.optimize_metric}_m{''.join(map(str, args.winter_months))}"
     
     short = {
         'bs': 'bs', 'lr': 'lr', 'dr_conv': 'dr1', 'dr_fc': 'dr2', 'fc_dim': 'fc', 

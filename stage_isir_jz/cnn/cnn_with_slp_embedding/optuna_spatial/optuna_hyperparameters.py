@@ -389,7 +389,7 @@ def objective(trial):
     test_pred_maps = decode_to_spatial_map_gpu(test_preds_latent, args.embed_method, pca_components_gpu, pca_mean_gpu, wgts_gpu, vae_model)
     t_r2, t_l1, t_corr = compute_targeted_spatial_metrics(test_pred_maps, test_true_maps, wgts_gpu)
 
-    # Noms unifiés pour post-processing partagé !
+    # Noms unifiés pour post-processing
     trial.set_user_attr("best_test_R2", t_r2)
     trial.set_user_attr("best_test_L1", t_l1)
     trial.set_user_attr("best_test_corr", t_corr)
@@ -474,7 +474,7 @@ if __name__ == "__main__":
     dynamic_name += f"_optuna_s{args.n_startup_trials_tpe}p{args.n_startup_trials_pruner}_{args.n_warmup_steps}i{args.interval_steps}"
 
     wgts_gpu = None
-    if args.lat_weight:  # <-- Retirer la restriction PCA ici
+    if args.lat_weight:  
         sample_path = f"/lustre/fswork/projects/rech/uxg/uca57ub/data/SLP/PSL_anom_LE2-1001.001_1mo.nc"
         try:
             with xr.open_dataset(sample_path) as ds_sample:
